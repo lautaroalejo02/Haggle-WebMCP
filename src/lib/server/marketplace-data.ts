@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, lte, or, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, lte, or, type SQL } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import {
   accessories,
@@ -143,7 +143,13 @@ export async function getBudgetCents(db: Database, buyerSessionId: string) {
 
 export async function searchListings(
   db: Database,
-  filters: { query?: string; maxPriceCents?: number; fulfillment?: "pickup" | "delivery" },
+  filters: {
+    query?: string;
+    maxPriceCents?: number;
+    fulfillment?: "pickup" | "delivery";
+    limit?: number;
+    offset?: number;
+  },
 ) {
   const conditions: SQL[] = [eq(listings.status, "active")];
   if (filters.query) {
@@ -156,7 +162,11 @@ export async function searchListings(
   if (filters.fulfillment === "pickup") conditions.push(eq(listings.allowsPickup, true));
   if (filters.fulfillment === "delivery") conditions.push(eq(listings.allowsDelivery, true));
 
-  return db
+  const limit = Math.min(20, Math.max(1, filters.limit ?? 8));
+  const offset = Math.max(0, filters.offset ?? 0);
+  const where = and(...conditions);
+  const [rows, totalRows] = await Promise.all([
+    db
     .select({
       id: listings.id,
       title: listings.title,
@@ -175,9 +185,19 @@ export async function searchListings(
     })
     .from(listings)
     .innerJoin(sellerPersonas, eq(listings.sellerPersonaId, sellerPersonas.id))
-    .where(and(...conditions))
+    .where(where)
     .orderBy(desc(listings.createdAt))
-    .limit(6);
+    .limit(limit)
+    .offset(offset),
+    db.select({ value: count() }).from(listings).where(where),
+  ]);
+
+  return {
+    rows,
+    total: totalRows[0]?.value ?? 0,
+    limit,
+    offset,
+  };
 }
 
 function proposalTerms(proposal: ProposalRecord): DealTerms {

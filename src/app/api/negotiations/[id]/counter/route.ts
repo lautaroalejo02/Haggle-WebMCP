@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getDatabase } from "@/db/client";
 import { apiErrorResponse, readJson } from "@/lib/server/api";
-import { dealCommandSchema } from "@/lib/server/backend-inputs";
+import { counterCommandSchema } from "@/lib/server/backend-inputs";
 import { runIdempotent } from "@/lib/server/idempotency";
 import { counterNegotiation, runSellerTurnWithDelay } from "@/lib/server/negotiation-service";
 import { ensureBuyerSession, requireBuyerSessionId } from "@/lib/server/session";
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
     const { negotiationId: _negotiationId, ...dealFields } = raw;
     void _negotiationId;
-    const command = dealCommandSchema.parse(dealFields);
+    const command = counterCommandSchema.parse(dealFields);
     const sessionId = requireBuyerSessionId(request);
     const db = getDatabase();
     await ensureBuyerSession(db, sessionId);

@@ -18,8 +18,8 @@ export function WebMcpBanner() {
     <div className="border-b border-mustard/40 bg-mustard-soft px-5 py-2.5 text-sm text-ink">
       <div className="mx-auto flex max-w-[82.5rem] items-center justify-between gap-5">
         <p>
-          <strong>Human mode is ready.</strong> Open in ChatGPT&apos;s browser or Chrome with the
-          WebMCP testing flag for the agent experience.
+          <strong>Browser WebMCP API not detected.</strong> Human mode still works. For agent tools,
+          open Chrome with the WebMCP testing flag or use a supported browser agent.
         </p>
         <div className="flex shrink-0 items-center gap-2">
           <a

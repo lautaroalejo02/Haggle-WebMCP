@@ -3,10 +3,11 @@ import { usdToCents } from "@/lib/marketplace/contracts";
 import type { DealTerms, SellerDecision } from "@/lib/negotiation/state-machine";
 
 const nullableId = z.string().trim().min(1).max(100).nullable().optional();
+const usdAmountSchema = z.number().finite().positive().max(100_000);
 
 export const dealCommandSchema = z
   .object({
-    amountUsd: z.number().finite().positive().max(100_000),
+    amountUsd: usdAmountSchema,
     fulfillment: z.enum(["pickup", "delivery"]),
     meetingPlaceId: nullableId,
     deliveryZoneId: nullableId,
@@ -57,6 +58,30 @@ export const dealCommandSchema = z
   });
 
 export type DealCommand = z.infer<typeof dealCommandSchema>;
+
+export const counterCommandSchema = z
+  .object({
+    amountUsd: usdAmountSchema,
+    keepCurrentTerms: z.literal(true).optional(),
+    fulfillment: z.enum(["pickup", "delivery"]).optional(),
+    meetingPlaceId: nullableId,
+    deliveryZoneId: nullableId,
+    timeWindowId: z.string().trim().min(1).max(100).optional(),
+    includedAccessoryId: nullableId,
+    message: z.string().trim().max(280).optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (usdToCents(value.amountUsd) === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["amountUsd"],
+        message: "Use a positive USD amount with no more than two decimal places.",
+      });
+    }
+  });
+
+export type CounterCommand = z.infer<typeof counterCommandSchema>;
 
 export const budgetCommandSchema = z
   .object({ maxTotalUsd: z.number().finite().positive().max(100_000) })
@@ -113,6 +138,39 @@ export function termsFromDealCommand(
     deliveryFeeCents: command.fulfillment === "delivery" ? listingDeliveryFeeCents : 0,
     includedAccessoryId: command.includedAccessoryId ?? null,
   };
+}
+
+export function termsFromCounterCommand(
+  command: CounterCommand,
+  currentTerms: DealTerms,
+  listingDeliveryFeeCents: number,
+): DealTerms {
+  const fulfillment = command.fulfillment ?? currentTerms.fulfillment;
+  const inheritsCurrentFulfillment = fulfillment === currentTerms.fulfillment;
+  const merged = dealCommandSchema.parse({
+    amountUsd: command.amountUsd,
+    fulfillment,
+    meetingPlaceId:
+      command.meetingPlaceId !== undefined
+        ? command.meetingPlaceId
+        : inheritsCurrentFulfillment
+          ? currentTerms.meetingPlaceId
+          : undefined,
+    deliveryZoneId:
+      command.deliveryZoneId !== undefined
+        ? command.deliveryZoneId
+        : inheritsCurrentFulfillment
+          ? currentTerms.deliveryZoneId
+          : undefined,
+    timeWindowId: command.timeWindowId ?? currentTerms.timeWindowId,
+    includedAccessoryId:
+      command.includedAccessoryId !== undefined
+        ? command.includedAccessoryId
+        : currentTerms.includedAccessoryId,
+    message: command.message,
+  });
+
+  return termsFromDealCommand(merged, listingDeliveryFeeCents);
 }
 
 export function fallbackSellerDecision(input: {

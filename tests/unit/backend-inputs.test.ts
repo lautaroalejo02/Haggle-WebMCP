@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   budgetCommandSchema,
+  counterCommandSchema,
   dealCommandSchema,
   fallbackSellerDecision,
   modelDecisionSchema,
+  termsFromCounterCommand,
   termsFromDealCommand,
 } from "@/lib/server/backend-inputs";
 
@@ -79,6 +81,62 @@ describe("backend deal command parsing", () => {
         0,
       ),
     ).toThrow(RangeError);
+  });
+
+  it("merges a price-only counter with the seller's current terms", () => {
+    const command = counterCommandSchema.parse({
+      amountUsd: 170,
+      keepCurrentTerms: true,
+      message: "Could you meet me at $170?",
+    });
+
+    expect(
+      termsFromCounterCommand(
+        command,
+        {
+          itemPriceCents: 18_500,
+          fulfillment: "pickup",
+          meetingPlaceId: "riverside-library",
+          deliveryZoneId: null,
+          timeWindowId: "sat-2-4",
+          deliveryFeeCents: 0,
+          includedAccessoryId: "u-lock",
+        },
+        1_500,
+      ),
+    ).toEqual({
+      itemPriceCents: 17_000,
+      fulfillment: "pickup",
+      meetingPlaceId: "riverside-library",
+      deliveryZoneId: null,
+      timeWindowId: "sat-2-4",
+      deliveryFeeCents: 0,
+      includedAccessoryId: "u-lock",
+    });
+  });
+
+  it("requires the destination details when a partial counter changes fulfillment", () => {
+    const command = counterCommandSchema.parse({
+      amountUsd: 180,
+      fulfillment: "delivery",
+      keepCurrentTerms: true,
+    });
+
+    expect(() =>
+      termsFromCounterCommand(
+        command,
+        {
+          itemPriceCents: 18_500,
+          fulfillment: "pickup",
+          meetingPlaceId: "riverside-library",
+          deliveryZoneId: null,
+          timeWindowId: "sat-2-4",
+          deliveryFeeCents: 0,
+          includedAccessoryId: "u-lock",
+        },
+        1_500,
+      ),
+    ).toThrow();
   });
 });
 

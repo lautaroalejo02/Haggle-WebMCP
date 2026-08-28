@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const LISTING_ID = "10000000-0000-4000-8000-000000000006";
+const LISTING_ID = "10000000-0000-4000-8000-000000000001";
 
 type RegisteredTool = {
   execute: (input: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text: string }> }>;
@@ -27,16 +27,30 @@ test("registers a minimal dynamic WebMCP surface and returns guarded output", as
 
   await expect
     .poll(() => registeredToolNames(page))
-    .toEqual(expect.arrayContaining(["search_listings", "get_listing", "get_my_negotiations", "set_budget", "make_offer"]));
+    .toEqual(expect.arrayContaining(["search_listings", "get_listing", "prepare_negotiation", "get_my_negotiations", "set_budget", "make_offer"]));
+  await page.getByRole("button", { name: "Open Agent Lens" }).click();
+  await expect(page.getByText("Page WebMCP tools registered", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close Agent Lens" }).last().click();
 
   const searchResult = await executeTool(page, "search_listings", { query: "bike" });
   expect(searchResult.securityNotice).toContain("untrusted user data");
   expect(Array.isArray(searchResult.listings)).toBe(true);
-  expect((searchResult.listings as unknown[]).length).toBeLessThanOrEqual(6);
+  expect(searchResult).toMatchObject({
+    resultCount: expect.any(Number),
+    totalMatches: expect.any(Number),
+    hasMore: expect.any(Boolean),
+  });
+  expect((searchResult.listings as unknown[]).length).toBeLessThanOrEqual(8);
 
-  const listingResult = await executeTool(page, "get_listing", { listingId: LISTING_ID });
+  const listingResult = await executeTool(page, "prepare_negotiation", { listingId: LISTING_ID });
   expect(listingResult.listing).not.toHaveProperty("floorPriceCents");
   expect(JSON.stringify(listingResult)).not.toContain("policyPrompt");
+  expect(listingResult).toMatchObject({
+    priceStatus: "asking_price",
+    sellerHasResponded: false,
+    negotiation: null,
+    nextRecommendedTool: "make_offer",
+  });
 
   await executeTool(page, "make_offer", {
     listingId: LISTING_ID,
@@ -44,11 +58,13 @@ test("registers a minimal dynamic WebMCP surface and returns guarded output", as
     fulfillment: "pickup",
     meetingPlaceId: "riverside-library",
     timeWindowId: "sat-2-4",
-    includedAccessoryId: "helmet",
+    includedAccessoryId: "u-lock",
     message: "A normal buyer note.",
   });
 
   await expect.poll(() => registeredToolNames(page)).not.toContain("make_offer");
+
+  await expect.poll(() => registeredToolNames(page)).toContain("counter_offer");
 
   const negotiationsResult = await executeTool(page, "get_my_negotiations", {});
   const serialized = JSON.stringify(negotiationsResult);
@@ -56,6 +72,23 @@ test("registers a minimal dynamic WebMCP surface and returns guarded output", as
   expect(negotiationsResult.negotiations).toHaveLength(1);
   const negotiation = (negotiationsResult.negotiations as Array<Record<string, unknown>>)[0];
   expect(negotiation).not.toHaveProperty("history");
+
+  const counterResult = await executeTool(page, "counter_offer", {
+    negotiationId: negotiation.id,
+    amountUsd: 170,
+    keepCurrentTerms: true,
+  });
+  expect(counterResult.negotiation).toMatchObject({
+    currentProposal: {
+      terms: {
+        itemPriceCents: 17_000,
+        fulfillment: "pickup",
+        meetingPlaceId: "riverside-library",
+        timeWindowId: "sat-2-4",
+        includedAccessoryId: "u-lock",
+      },
+    },
+  });
 
   await expect.poll(() => registeredToolNames(page)).toContain("reject_deal");
   await executeTool(page, "reject_deal", { negotiationId: negotiation.id });
@@ -87,11 +120,26 @@ test("supports Chrome's AbortSignal tool lifecycle", async ({ page }) => {
 
   await expect
     .poll(() => registeredToolNames(page))
-    .toEqual(expect.arrayContaining(["search_listings", "get_listing", "make_offer"]));
+    .toEqual(expect.arrayContaining(["search_listings", "get_listing", "prepare_negotiation", "make_offer"]));
 
   await page.goto("/");
   await expect.poll(() => registeredToolNames(page)).not.toContain("make_offer");
   await expect.poll(() => registeredToolNames(page)).toContain("search_listings");
+});
+
+test("labels sample activity and reports WebMCP support precisely", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+
+  await expect(page.getByText("Example negotiation · not your deal", { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+  await page.getByRole("button", { name: "Open Agent Lens" }).click();
+  await expect(page.getByText("Browser WebMCP API unavailable", { exact: true })).toBeVisible();
+  await expect(page.getByText(/The page cannot register tools in this browser/)).toBeVisible();
 });
 
 async function registeredToolNames(page: import("@playwright/test").Page) {

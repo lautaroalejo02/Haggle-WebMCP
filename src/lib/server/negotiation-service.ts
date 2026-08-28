@@ -20,7 +20,9 @@ import {
 import { ApiError } from "@/lib/server/api";
 import {
   fallbackSellerDecision,
+  termsFromCounterCommand,
   termsFromDealCommand,
+  type CounterCommand,
   type DealCommand,
 } from "@/lib/server/backend-inputs";
 import {
@@ -168,7 +170,7 @@ export async function counterNegotiation(
   db: Database,
   buyerSessionId: string,
   negotiationId: string,
-  command: DealCommand,
+  command: CounterCommand,
 ) {
   const { record, currentProposal } = await ownedNegotiation(db, negotiationId, buyerSessionId);
   if (record.status !== "buyer_turn" || currentProposal.side !== "seller") {
@@ -209,7 +211,11 @@ export async function counterNegotiation(
     throw new ApiError(409, "LISTING_UNAVAILABLE", "That bicycle is no longer available.");
   }
   const budgetCents = await getBudgetCents(db, buyerSessionId);
-  const terms = termsFromDealCommand(command, listing.deliveryFeeCents);
+  const terms = termsFromCounterCommand(
+    command,
+    termsFromProposal(currentProposal),
+    listing.deliveryFeeCents,
+  );
   const totalCents = requireValidTerms(terms, validationRules(listing, budgetCents), "counter_offer");
   const proposalId = crypto.randomUUID();
 

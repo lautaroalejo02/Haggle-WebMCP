@@ -21,16 +21,30 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const negotiation = (await getNegotiationsForSession(db, sessionId)).find(
       (item) => item.listingId === listingId && ["seller_turn", "buyer_turn", "agreed_pending_approval"].includes(item.status),
     );
+    const possibleNextActions = negotiation?.possibleActions.length
+      ? negotiation.possibleActions
+      : listing.status === "active"
+        ? ["make_offer"]
+        : ["search_listings"];
+    const sellerHasResponded =
+      negotiation?.history.some((proposal) => proposal.side === "seller") ?? false;
+    const nextRecommendedTool =
+      negotiation?.status === "seller_turn"
+        ? "get_my_negotiations"
+        : possibleNextActions[0] ?? "search_listings";
     return NextResponse.json({
       ok: true,
       summary: `${listing.title} is listed at $${(listing.askingPriceCents / 100).toFixed(2)} and supports structured negotiation.`,
       listing: publicListing(listing),
       negotiation: negotiation ?? null,
-      possibleNextActions: negotiation?.possibleActions.length
-        ? negotiation.possibleActions
-        : listing.status === "active"
-          ? ["make_offer"]
-          : ["search_listings"],
+      priceStatus: negotiation ? "negotiation_active" : "asking_price",
+      sellerHasResponded,
+      nextRecommendedTool,
+      requiredTerms:
+        negotiation || listing.status !== "active"
+          ? []
+          : ["amountUsd", "fulfillment", "timeWindowId", "meetingPlaceId or deliveryZoneId"],
+      possibleNextActions,
     });
   } catch (error) {
     return apiErrorResponse(error);

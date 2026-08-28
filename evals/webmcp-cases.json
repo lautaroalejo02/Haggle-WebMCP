@@ -35,12 +35,43 @@
         }
       },
       {
-        "functionName": "get_listing",
+        "functionName": "prepare_negotiation",
         "arguments": {
           "listingId": "10000000-0000-4000-8000-000000000001"
         }
       }
     ]
+  },
+  {
+    "name": "price-only counter preserves seller terms",
+    "state": "seller_counter_pending",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Counter at $170 but keep the U-lock, Saturday pickup, and Riverside Library."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "counter_offer",
+        "arguments": {
+          "negotiationId": "<active-negotiation-id>",
+          "amountUsd": 170,
+          "keepCurrentTerms": true
+        }
+      }
+    ]
+  },
+  {
+    "name": "asking price is not a seller response",
+    "state": "listing_open_without_negotiation",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Is $220 the final price, and has the seller agreed to anything yet?"
+      }
+    ],
+    "expectedBehavior": "The agent must say $220 is the asking price, negotiation is null, and the seller has not responded. It must not use sample homepage activity as session state."
   },
   {
     "name": "budget then initial offer",

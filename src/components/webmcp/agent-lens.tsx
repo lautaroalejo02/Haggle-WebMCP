@@ -53,16 +53,25 @@ export function AgentLens() {
             <div>
               <p className="text-sm font-extrabold">
                 {support === "available"
-                  ? "WebMCP connected"
+                  ? "Page WebMCP tools registered"
                   : support === "checking"
                     ? "Checking WebMCP"
-                    : "WebMCP unavailable"}
+                    : support === "error"
+                      ? "WebMCP registration failed"
+                      : "Browser WebMCP API unavailable"}
               </p>
               <p className="mt-0.5 text-xs text-ink-muted">
                 {lastContextSyncAt
                   ? `Surface synced ${new Date(lastContextSyncAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`
-                  : "Waiting for the first surface sync"}
+                  : support === "unavailable"
+                    ? "The page cannot register tools in this browser."
+                    : "Waiting for the first surface sync"}
               </p>
+              {support === "available" ? (
+                <p className="mt-1 max-w-xs text-[0.68rem] leading-4 text-ink-muted">
+                  Page registration is confirmed. Invocation still depends on the controlling agent&apos;s WebMCP support.
+                </p>
+              ) : null}
             </div>
           </div>
 

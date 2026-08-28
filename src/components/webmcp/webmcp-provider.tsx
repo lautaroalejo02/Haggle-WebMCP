@@ -77,6 +77,7 @@ const WebMcpContext = createContext<AgentLensState | null>(null);
 const BASE_REASONS: Record<string, string> = {
   search_listings: "Available anywhere for bicycle discovery.",
   get_listing: "Available anywhere for public details and valid deal options.",
+  prepare_negotiation: "Verifies real session state and reveals the valid negotiation action.",
   get_my_negotiations: "Available anywhere for this browser session's deals.",
   set_budget: "Available anywhere as an optional human spending guardrail.",
 };
@@ -207,13 +208,15 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
       {
         name: "search_listings",
         description:
-          "Search active bicycle listings by keywords, price, or pickup and delivery availability. Asking prices are starting points and offers below asking are expected here. Use get_listing before proposing a deal.",
+          "Search active bicycle listings by keywords, price, or pickup and delivery availability. Asking prices are starting points, never accepted seller terms. Use prepare_negotiation before proposing a deal or claiming that a seller responded.",
         inputSchema: {
           type: "object",
           properties: {
             query: { type: "string", maxLength: 100, description: "Optional bicycle keywords." },
             maxPriceUsd: { type: "number", exclusiveMinimum: 0, description: "Maximum asking price in USD." },
             fulfillment: { type: "string", enum: ["pickup", "delivery"], description: "Required fulfillment option." },
+            limit: { type: "integer", minimum: 1, maximum: 20, description: "Maximum results for this page; defaults to 8." },
+            offset: { type: "integer", minimum: 0, description: "Result offset for another page." },
           },
           additionalProperties: false,
         },
@@ -222,13 +225,15 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
           if (typeof input.query === "string") params.set("query", input.query);
           if (typeof input.maxPriceUsd === "number") params.set("maxPriceUsd", String(input.maxPriceUsd));
           if (typeof input.fulfillment === "string") params.set("fulfillment", input.fulfillment);
+          if (typeof input.limit === "number") params.set("limit", String(input.limit));
+          if (typeof input.offset === "number") params.set("offset", String(input.offset));
           return executeApi("search_listings", `/api/listings?${params.toString()}`);
         },
       },
       {
         name: "get_listing",
         description:
-          "Get one bicycle's public details, valid fulfillment choices, public meeting-place IDs, time-window IDs, accessory options, and your negotiation. Use this before make_offer and do not invent option IDs. Private seller policy and floor price are never returned.",
+          "Get one bicycle's public details, valid fulfillment choices, public meeting-place IDs, time-window IDs, accessory options, and authoritative browser-session negotiation state. Homepage examples are not session state. Private seller policy and floor price are never returned.",
         inputSchema: {
           type: "object",
           properties: {
@@ -240,6 +245,28 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
         execute: async (input) =>
           executeApi(
             "get_listing",
+            `/api/listings/${encodeURIComponent(String(input.listingId ?? ""))}`,
+            undefined,
+            () => {
+              inspectedListingRef.current = String(input.listingId);
+            },
+          ),
+      },
+      {
+        name: "prepare_negotiation",
+        description:
+          "Prepare one bicycle for negotiation after search. This returns authoritative asking-price versus negotiated-price status, whether the seller actually responded in this browser session, required terms, and the next valid tool. It also reveals the contextual make_offer or response tool. Always use this before offering, countering, or describing seller intent.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            listingId: { type: "string", minLength: 1, description: "Listing ID returned by search_listings." },
+          },
+          required: ["listingId"],
+          additionalProperties: false,
+        },
+        execute: async (input) =>
+          executeApi(
+            "prepare_negotiation",
             `/api/listings/${encodeURIComponent(String(input.listingId ?? ""))}`,
             undefined,
             () => {
@@ -344,6 +371,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
       }
 
       if (mountedRef.current) {
+        setSupport(active.size > 0 || desired.size === 0 ? "available" : "error");
         setTools(
           [...desired.entries()].map(([name, entry]) => ({
             name,
@@ -426,7 +454,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
         const ids = [...(config.action.negotiationIds ?? [])].sort();
         const inputSchema =
           config.name === "counter_offer"
-            ? dealSchema("negotiationId", ids)
+            ? counterSchema(ids)
             : {
                 type: "object",
                 properties: {
@@ -564,6 +592,29 @@ function dealSchema(idName: "listingId" | "negotiationId", ids: string[]) {
       message: { type: "string", maxLength: 280, description: "Optional polite note to the seller." },
     },
     required: [idName, "amountUsd", "fulfillment", "timeWindowId"],
+    additionalProperties: false,
+  };
+}
+
+function counterSchema(ids: string[]) {
+  return {
+    type: "object",
+    properties: {
+      negotiationId: { type: "string", enum: ids, description: "Eligible negotiation ID." },
+      amountUsd: { type: "number", exclusiveMinimum: 0, description: "Revised item price in USD." },
+      keepCurrentTerms: {
+        type: "boolean",
+        const: true,
+        description: "Keep every omitted term from the seller's current proposal. Use true for price-only counters.",
+      },
+      fulfillment: { type: "string", enum: ["pickup", "delivery"], description: "Optional fulfillment override." },
+      meetingPlaceId: { type: "string", description: "Optional public pickup-place override." },
+      deliveryZoneId: { type: "string", description: "Optional public delivery-zone override." },
+      timeWindowId: { type: "string", description: "Optional available time-window override." },
+      includedAccessoryId: { type: "string", description: "Optional accessory override." },
+      message: { type: "string", maxLength: 280, description: "Optional polite note to the seller." },
+    },
+    required: ["negotiationId", "amountUsd"],
     additionalProperties: false,
   };
 }

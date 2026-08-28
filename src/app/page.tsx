@@ -30,8 +30,8 @@ export default function HomePage() {
         </div>
 
         <div className="relative lg:col-span-5">
-          <div className="absolute -left-3 -top-3 hidden border border-ink/15 bg-mint px-3 py-2 text-[0.66rem] font-black uppercase tracking-[0.12em] lg:block">
-            Live deal preview
+          <div className="absolute left-3 -top-3 border border-ink/15 bg-mint px-3 py-2 text-[0.66rem] font-black uppercase tracking-[0.12em] lg:-left-3">
+            Example negotiation · not your deal
           </div>
           <div className="border border-ink/20 bg-paper-raised p-4 shadow-float sm:p-5">
             <div className="flex items-start justify-between gap-5 border-b border-ink/15 pb-4">
@@ -63,7 +63,7 @@ export default function HomePage() {
 
       <section className="border-y border-ink/15 bg-ink py-3 text-paper">
         <div className="mx-auto flex max-w-[82.5rem] items-center gap-7 overflow-hidden px-5 sm:px-8">
-          <p className="shrink-0 text-[0.66rem] font-black uppercase tracking-[0.14em] text-mint">Live market</p>
+          <p className="shrink-0 text-[0.66rem] font-black uppercase tracking-[0.14em] text-mint">Sample activity</p>
           <div className="flex min-w-0 flex-1 items-center justify-between gap-8 text-sm">
             <p className="truncate">🤖 A buyer agent offered <strong>$165</strong> on a Trek FX 2</p>
             <p className="hidden truncate md:block">⚡ Easygoing Eli accepted Saturday pickup</p>

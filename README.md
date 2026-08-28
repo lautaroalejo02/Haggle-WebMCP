@@ -10,13 +10,13 @@ Haggle treats local commerce as more than a checkout button: price, pickup or de
 
 A normal marketplace page can be read by an agent. Haggle makes the marketplace *operable* by an agent through a small, state-aware tool surface:
 
-- Base tools are always available: `search_listings`, `get_listing`, `get_my_negotiations`, and `set_budget`.
+- Base tools are always available: `search_listings`, `get_listing`, `prepare_negotiation`, `get_my_negotiations`, and `set_budget`.
 - Contextual tools are registered only when valid: `make_offer`, `counter_offer`, `accept_deal`, and `reject_deal`.
 - The surface changes as a negotiation advances. After a seller counters, for example, `make_offer` disappears and the valid response tools appear.
 - Tool availability is guidance, not authorization. Every mutation is revalidated by the server.
 - Human approval is intentionally not exposed as a WebMCP tool.
 
-All experimental WebMCP usage is isolated in [`src/components/webmcp/webmcp-provider.tsx`](src/components/webmcp/webmcp-provider.tsx). It feature-detects `document.modelContext ?? navigator.modelContext` and uses only the project's required `registerTool({...})` and `unregisterTool(name)` contract.
+All experimental WebMCP usage is isolated in [`src/components/webmcp/webmcp-provider.tsx`](src/components/webmcp/webmcp-provider.tsx). It feature-detects `document.modelContext ?? navigator.modelContext`, uses the project's required `registerTool({...})` shape, and supports both `unregisterTool(name)` and Chrome 153+'s documented AbortSignal lifecycle.
 
 ## Signature demo
 
@@ -24,7 +24,7 @@ The seeded golden path is deterministic enough for a reliable live demo while st
 
 1. Set a total budget of **$190**.
 2. Open **Moss Green Trek FX 2**, asking **$220**.
-3. Offer **$165** for Saturday pickup.
+3. Run `prepare_negotiation`, then offer **$165** for Saturday pickup.
 4. Haggler Hank counters at **$185**, at Riverside Library, with the U-lock included.
 5. The buyer agent accepts the terms.
 6. The buyer and seller humans approve separately.
@@ -147,7 +147,9 @@ document.modelContext.registerTool({
 });
 ```
 
-Dynamic changes use `unregisterTool(name)`. Agent Lens is powered by Haggle's own provider registry state; it does not assume an unverified WebMCP enumeration API.
+Dynamic changes use `unregisterTool(name)` when that method is present. Agent Lens is powered by Haggle's own provider registry state; it does not assume an unverified WebMCP enumeration API.
+
+When `unregisterTool(name)` is absent, current Chrome builds receive an `AbortSignal` as the second `registerTool` argument and the provider aborts that registration when the contextual surface changes. Search responses include `totalMatches`, `hasMore`, and `nextOffset`, so agents never mistake one result page for the complete catalog. `prepare_negotiation` is the authoritative bridge from discovery to action: it distinguishes asking prices from actual session proposals and reveals the valid contextual tool.
 
 Primary references:
 

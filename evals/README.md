@@ -1,6 +1,6 @@
 # WebMCP eval cases
 
-`webmcp-cases.json` follows the `messages` plus `expectedCall` shape described in Chrome's WebMCP eval guidance. It covers direct tool selection, required call ordering, contextual tool changes, forbidden human-approval automation, private-location safety, and a mid-chain budget failure.
+`webmcp-cases.json` follows the `messages` plus `expectedCall` shape described in Chrome's WebMCP eval guidance. It covers direct tool selection, required call ordering through `prepare_negotiation`, contextual tool changes, price-only counters that preserve seller terms, asking-price truthfulness, forbidden human-approval automation, private-location safety, and a mid-chain budget failure.
 
 The placeholder `<active-negotiation-id>` must be replaced by the ID produced while preparing the seller-counter state.
 

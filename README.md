@@ -95,7 +95,7 @@ Environment variables:
 ```dotenv
 DATABASE_URL=postgresql://...
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5-mini
+OPENAI_MODEL=gpt-5.6-luna
 DEMO_MODE=true
 ```
 

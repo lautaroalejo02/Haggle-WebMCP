@@ -588,9 +588,10 @@ async function requestSellerMessage(
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured.");
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const response = await client.chat.completions.create({
-    model: process.env.OPENAI_MODEL || "gpt-5-mini",
+    model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
     response_format: { type: "json_object" },
-    temperature: 0,
+    reasoning_effort: "none",
+    max_completion_tokens: 120,
     messages: [
       {
         role: "system",

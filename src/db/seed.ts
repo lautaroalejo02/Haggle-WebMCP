@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { createDatabase } from "@/db/client";
+import { additionalListingRows } from "@/db/seed-catalog";
 import {
   accessories,
   availabilityWindows,
@@ -73,7 +74,7 @@ const personaRows = [
   },
 ];
 
-const listingRows = [
+const baseListingRows = [
   {
     id: LISTING_IDS[0],
     sellerPersonaId: PERSONA_IDS.haggler,
@@ -220,6 +221,8 @@ const listingRows = [
   },
 ] as const;
 
+const listingRows = [...baseListingRows, ...additionalListingRows];
+
 async function seed() {
   await db
     .insert(sellerPersonas)
@@ -312,7 +315,7 @@ async function seed() {
       });
   }
 
-  const allListings = LISTING_IDS.map((listingId) => ({ listingId }));
+  const allListings = listingRows.map(({ id: listingId }) => ({ listingId }));
   await db
     .insert(listingMeetingPlaces)
     .values(

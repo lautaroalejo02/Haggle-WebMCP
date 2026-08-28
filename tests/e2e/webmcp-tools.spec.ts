@@ -61,6 +61,39 @@ test("registers a minimal dynamic WebMCP surface and returns guarded output", as
   await executeTool(page, "reject_deal", { negotiationId: negotiation.id });
 });
 
+test("supports Chrome's AbortSignal tool lifecycle", async ({ page }) => {
+  await page.addInitScript(() => {
+    const tools = new Map<string, RegisteredTool>();
+    Object.defineProperty(document, "modelContext", {
+      configurable: true,
+      value: {
+        registerTool(
+          tool: RegisteredTool & { name: string },
+          options?: { signal?: AbortSignal },
+        ) {
+          tools.set(tool.name, tool);
+          options?.signal?.addEventListener(
+            "abort",
+            () => tools.delete(tool.name),
+            { once: true },
+          );
+        },
+      },
+    });
+    Object.defineProperty(window, "__haggleTestTools", { configurable: true, value: tools });
+  });
+
+  await page.goto(`/listings/${LISTING_ID}`);
+
+  await expect
+    .poll(() => registeredToolNames(page))
+    .toEqual(expect.arrayContaining(["search_listings", "get_listing", "make_offer"]));
+
+  await page.goto("/");
+  await expect.poll(() => registeredToolNames(page)).not.toContain("make_offer");
+  await expect.poll(() => registeredToolNames(page)).toContain("search_listings");
+});
+
 async function registeredToolNames(page: import("@playwright/test").Page) {
   return page.evaluate(() =>
     Array.from(

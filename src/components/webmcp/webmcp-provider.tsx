@@ -21,8 +21,16 @@ type WebMcpTool = {
   execute: (input: Record<string, unknown>) => Promise<WebMcpToolResult>;
 };
 type WebModelContext = {
-  registerTool: (tool: WebMcpTool) => void | Promise<void>;
-  unregisterTool: (name: string) => void | Promise<void>;
+  registerTool: (
+    tool: WebMcpTool,
+    options?: { signal?: AbortSignal },
+  ) => void | Promise<void>;
+  unregisterTool?: (name: string) => void | Promise<void>;
+};
+
+type ActiveRegistration = {
+  signature: string;
+  abortController?: AbortController;
 };
 
 type ContextAction = {
@@ -80,11 +88,7 @@ function getModelContext(): WebModelContext | null {
     (document as unknown as { modelContext?: WebModelContext }).modelContext ??
     (navigator as unknown as { modelContext?: WebModelContext }).modelContext;
 
-  if (
-    !mc ||
-    typeof mc.registerTool !== "function" ||
-    typeof mc.unregisterTool !== "function"
-  ) {
+  if (!mc || typeof mc.registerTool !== "function") {
     return null;
   }
 
@@ -135,7 +139,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
   const [lastExecution, setLastExecution] = useState<AgentLensState["lastExecution"]>(null);
   const [lensOpen, setLensOpen] = useState(false);
   const modelContextRef = useRef<WebModelContext | null>(null);
-  const activeRef = useRef(new Map<string, string>());
+  const activeRef = useRef(new Map<string, ActiveRegistration>());
   const desiredRef = useRef(new Map<string, { tool: WebMcpTool; kind: AgentLensTool["kind"]; reason: string }>());
   const queueRef = useRef(Promise.resolve());
   const inspectedListingRef = useRef<string | null>(null);
@@ -282,11 +286,15 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
       const removed: string[] = [];
       const added: string[] = [];
 
-      for (const [name, signature] of [...active.entries()]) {
+      for (const [name, registration] of [...active.entries()]) {
         const next = desired.get(name);
-        if (!next || toolSignature(next.tool) !== signature) {
+        if (!next || toolSignature(next.tool) !== registration.signature) {
           try {
-            await mc.unregisterTool(name);
+            if (typeof mc.unregisterTool === "function") {
+              await mc.unregisterTool(name);
+            } else {
+              registration.abortController?.abort();
+            }
             active.delete(name);
             removed.push(name);
           } catch (error) {
@@ -304,15 +312,25 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
       for (const [name, entry] of desired.entries()) {
         if (active.has(name)) continue;
         try {
-          await mc.registerTool({
+          const tool = {
             name: entry.tool.name,
             description: entry.tool.description,
             inputSchema: entry.tool.inputSchema,
-            execute: async (input) => {
+            execute: async (input: Record<string, unknown>) => {
               return entry.tool.execute(input);
             },
+          };
+          let abortController: AbortController | undefined;
+          if (typeof mc.unregisterTool === "function") {
+            await mc.registerTool(tool);
+          } else {
+            abortController = new AbortController();
+            await mc.registerTool(tool, { signal: abortController.signal });
+          }
+          active.set(name, {
+            signature: toolSignature(entry.tool),
+            abortController,
           });
-          active.set(name, toolSignature(entry.tool));
           added.push(name);
         } catch (error) {
           setTools((current) =>
@@ -505,7 +523,12 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
       if (timer) clearTimeout(timer);
       const names = [...activeRegistry.keys()];
       for (const name of names) {
-        void Promise.resolve(mc.unregisterTool(name)).catch(() => undefined);
+        const registration = activeRegistry.get(name);
+        if (typeof mc.unregisterTool === "function") {
+          void Promise.resolve(mc.unregisterTool(name)).catch(() => undefined);
+        } else {
+          registration?.abortController?.abort();
+        }
       }
       activeRegistry.clear();
     };

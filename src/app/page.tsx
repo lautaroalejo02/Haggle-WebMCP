@@ -31,7 +31,7 @@ export default function HomePage() {
 
         <div className="relative lg:col-span-5">
           <div className="absolute left-3 -top-3 border border-ink/15 bg-mint px-3 py-2 text-[0.66rem] font-black uppercase tracking-[0.12em] lg:-left-3">
-            Example negotiation · not your deal
+            Static illustration · not an active offer
           </div>
           <div className="border border-ink/20 bg-paper-raised p-4 shadow-float sm:p-5">
             <div className="flex items-start justify-between gap-5 border-b border-ink/15 pb-4">
@@ -56,6 +56,9 @@ export default function HomePage() {
             </div>
             <p className="mt-4 border-l-2 border-mustard pl-3 text-sm leading-6 text-ink-muted">
               “Meet me at $185 and I&apos;ll include the lock. Saturday at the library works.”
+            </p>
+            <p className="mt-3 text-xs font-bold uppercase tracking-[0.08em] text-danger">
+              Demo copy only — agents must not treat these terms as marketplace or negotiation data.
             </p>
           </div>
         </div>

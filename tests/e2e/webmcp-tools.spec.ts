@@ -29,7 +29,8 @@ test("registers a minimal dynamic WebMCP surface and returns guarded output", as
     .poll(() => registeredToolNames(page))
     .toEqual(expect.arrayContaining(["search_listings", "get_listing", "prepare_negotiation", "get_my_negotiations", "set_budget", "make_offer"]));
   await page.getByRole("button", { name: "Open Agent Lens" }).click();
-  await expect(page.getByText("Page WebMCP tools registered", { exact: true })).toBeVisible();
+  await expect(page.getByText("Page tools registered · agent unverified", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Registration does not prove agent access/)).toBeVisible();
   await page.getByRole("button", { name: "Close Agent Lens" }).last().click();
 
   const searchResult = await executeTool(page, "search_listings", { query: "bike" });
@@ -131,7 +132,8 @@ test("labels sample activity and reports WebMCP support precisely", async ({ pag
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
 
-  await expect(page.getByText("Example negotiation · not your deal", { exact: true })).toBeVisible();
+  await expect(page.getByText("Static illustration · not an active offer", { exact: true })).toBeVisible();
+  await expect(page.getByText(/agents must not treat these terms as marketplace or negotiation data/)).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
@@ -140,6 +142,8 @@ test("labels sample activity and reports WebMCP support precisely", async ({ pag
   await page.getByRole("button", { name: "Open Agent Lens" }).click();
   await expect(page.getByText("Browser WebMCP API unavailable", { exact: true })).toBeVisible();
   await expect(page.getByText(/The page cannot register tools in this browser/)).toBeVisible();
+  await expect(page.getByText("Configured catalog · inactive", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Tool names are intentionally hidden/)).toBeVisible();
 });
 
 async function registeredToolNames(page: import("@playwright/test").Page) {

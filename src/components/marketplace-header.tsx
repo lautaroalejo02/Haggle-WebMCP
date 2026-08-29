@@ -30,7 +30,13 @@ export function MarketplaceHeader() {
           >
             <span className={`connection-dot connection-${support}`} />
             <span className="hidden sm:inline">
-              {support === "available" ? `Tools ready · ${activeCount}` : "Agent Lens"}
+              {support === "available"
+                ? `Page tools · ${activeCount}`
+                : support === "unavailable"
+                  ? "WebMCP off"
+                  : support === "error"
+                    ? "Registration error"
+                    : "Checking WebMCP"}
             </span>
             <Bot size={16} />
           </button>

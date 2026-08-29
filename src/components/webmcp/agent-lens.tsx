@@ -16,6 +16,8 @@ export function AgentLens() {
 
   const contextual = tools.filter((tool) => tool.kind === "contextual");
   const base = tools.filter((tool) => tool.kind === "base");
+  const invocationVerified = lastExecution?.phase === "succeeded";
+  const pageRegistrationAvailable = support === "available";
 
   return (
     <>
@@ -52,8 +54,10 @@ export function AgentLens() {
             <span className={`connection-dot connection-${support}`} />
             <div>
               <p className="text-sm font-extrabold">
-                {support === "available"
-                  ? "Page WebMCP tools registered"
+                {pageRegistrationAvailable
+                  ? invocationVerified
+                    ? "WebMCP invocation verified"
+                    : "Page tools registered · agent unverified"
                   : support === "checking"
                     ? "Checking WebMCP"
                     : support === "error"
@@ -67,16 +71,22 @@ export function AgentLens() {
                     ? "The page cannot register tools in this browser."
                     : "Waiting for the first surface sync"}
               </p>
-              {support === "available" ? (
+              {pageRegistrationAvailable ? (
                 <p className="mt-1 max-w-xs text-[0.68rem] leading-4 text-ink-muted">
-                  Page registration is confirmed. Invocation still depends on the controlling agent&apos;s WebMCP support.
+                  {invocationVerified
+                    ? "A controlling agent has successfully called a page tool in this session."
+                    : "Registration does not prove agent access. No controlling agent has successfully called a tool yet."}
                 </p>
               ) : null}
             </div>
           </div>
 
           <LensSection title="Available now" icon={<Radio size={15} />}>
-            {contextual.length ? (
+            {!pageRegistrationAvailable ? (
+              <p className="border-l-2 border-danger/50 pl-3 text-sm leading-6 text-ink-muted">
+                No contextual WebMCP tools are registered in this browser session.
+              </p>
+            ) : contextual.length ? (
               contextual.map((tool) => <ToolRow key={tool.name} tool={tool} />)
             ) : (
               <p className="border-l-2 border-ink/20 pl-3 text-sm leading-6 text-ink-muted">
@@ -85,8 +95,17 @@ export function AgentLens() {
             )}
           </LensSection>
 
-          <LensSection title="Always available" icon={<Bot size={15} />}>
-            {base.map((tool) => <ToolRow key={tool.name} tool={tool} />)}
+          <LensSection
+            title={pageRegistrationAvailable ? "Registered on page" : "Configured catalog · inactive"}
+            icon={<Bot size={15} />}
+          >
+            {pageRegistrationAvailable && base.length ? (
+              base.map((tool) => <ToolRow key={tool.name} tool={tool} />)
+            ) : (
+              <p className="border-l-2 border-danger/50 pl-3 text-sm leading-6 text-ink-muted">
+                Tool names are intentionally hidden because this browser did not expose a WebMCP registration API.
+              </p>
+            )}
           </LensSection>
 
           <LensSection title="Latest activity" icon={<Clock3 size={15} />}>
@@ -99,7 +118,7 @@ export function AgentLens() {
                 ) : null}
               </div>
             ) : (
-              <p className="text-sm text-ink-muted">No WebMCP tool has been called yet.</p>
+              <p className="text-sm text-ink-muted">No verified WebMCP tool call has reached this page yet.</p>
             )}
             {lastSurfaceChange ? (
               <p className="mt-4 bg-moss-soft px-3 py-2 text-xs font-semibold text-moss">

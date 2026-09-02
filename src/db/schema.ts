@@ -25,6 +25,7 @@ export const negotiationStatusEnum = pgEnum("negotiation_status", [
 ]);
 export const proposalSideEnum = pgEnum("proposal_side", ["buyer", "seller"]);
 export const fulfillmentEnum = pgEnum("fulfillment_type", ["pickup", "delivery"]);
+export const mandatePlacePolicyEnum = pgEnum("mandate_place_policy", ["public_only", "any"]);
 export const eventActorEnum = pgEnum("event_actor", [
   "buyer_agent",
   "seller_agent",
@@ -204,6 +205,63 @@ export const negotiations = pgTable(
     check("negotiations_round_positive", sql`${table.round} > 0`),
     check("negotiations_max_rounds_positive", sql`${table.maxRounds} > 0`),
     check("negotiations_round_within_max", sql`${table.round} <= ${table.maxRounds}`),
+  ],
+);
+
+export type MandatePickupWindow = {
+  day: string;
+  from: string;
+  to: string;
+};
+
+export const buyerMandates = pgTable(
+  "buyer_mandates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    buyerSessionId: uuid("buyer_session_id")
+      .notNull()
+      .references(() => buyerSessions.id, { onDelete: "cascade" }),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    negotiationId: uuid("negotiation_id").references(() => negotiations.id, { onDelete: "set null" }),
+    maxPriceCents: integer("max_price_cents").notNull(),
+    pickupWindows: jsonb("pickup_windows").$type<MandatePickupWindow[]>().notNull(),
+    placePolicy: mandatePlacePolicyEnum("place_policy").default("public_only").notNull(),
+    mustInclude: jsonb("must_include").$type<string[]>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("buyer_mandates_session_listing_unique").on(table.buyerSessionId, table.listingId),
+    index("buyer_mandates_negotiation_idx").on(table.negotiationId),
+    check("buyer_mandates_max_price_positive", sql`${table.maxPriceCents} > 0`),
+  ],
+);
+
+export type MandateBlockDetail = {
+  term: string;
+  proposed: number | string | string[] | MandatePickupWindow | null;
+  limit: number | string | string[] | MandatePickupWindow[];
+};
+
+export const mandateBlocks = pgTable(
+  "mandate_blocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    mandateId: uuid("mandate_id")
+      .notNull()
+      .references(() => buyerMandates.id, { onDelete: "cascade" }),
+    negotiationId: uuid("negotiation_id").references(() => negotiations.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(),
+    detail: jsonb("detail").$type<MandateBlockDetail>().notNull(),
+    message: text("message").notNull(),
+    termsSnapshot: jsonb("terms_snapshot").$type<DealTermsSnapshot>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("mandate_blocks_mandate_idx").on(table.mandateId),
+    index("mandate_blocks_negotiation_idx").on(table.negotiationId),
   ],
 );
 

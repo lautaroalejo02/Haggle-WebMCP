@@ -7,6 +7,7 @@ export class ApiError extends Error {
     public readonly code: string,
     message: string,
     public readonly possibleNextActions: string[] = [],
+    public readonly errorDetails?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -19,7 +20,12 @@ export function apiErrorResponse(error: unknown) {
       {
         ok: false,
         summary: error.message,
-        error: { code: error.code, message: error.message, retryable: error.status >= 500 },
+        error: {
+          code: error.code,
+          message: error.message,
+          retryable: error.status >= 500,
+          ...error.errorDetails,
+        },
         possibleNextActions: error.possibleNextActions,
       },
       { status: error.status },

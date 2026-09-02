@@ -4,6 +4,7 @@ import { getDatabase } from "@/db/client";
 import { apiErrorResponse } from "@/lib/server/api";
 import { getNegotiationsForSession, getPrivateListingBundle } from "@/lib/server/marketplace-data";
 import { ensureBuyerSession, requireBuyerSessionId } from "@/lib/server/session";
+import { MANDATE_FEATURE_ENABLED } from "@/lib/negotiation/mandate";
 
 function disabled(reason: string) {
   return { enabled: false, reason };
@@ -44,6 +45,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       version: sessionNegotiations.map((item) => `${item.id}:${item.status}:${item.round}:${item.updatedAt.toISOString()}`).join("|") || "empty",
       actions: {
+        mandate: MANDATE_FEATURE_ENABLED
+          ? {
+              enabled: Boolean(listingId || active.length),
+              reason: listingId
+                ? "Set or read the buyer's private boundaries for this listing."
+                : "Set or read the buyer's private boundaries for an active negotiation.",
+              listingIds: listingId
+                ? [listingId]
+                : [...new Set(active.map((item) => item.listingId))],
+            }
+          : disabled("Buyer mandates are disabled for this deployment."),
         make_offer: makeOffer,
         counter_offer: canCounter.length
           ? {

@@ -53,6 +53,7 @@ function compactNegotiationForAgent(row: Awaited<ReturnType<typeof getNegotiatio
     currentProposal: compactProposal(row.currentProposal),
     agreementProposal: compactProposal(row.agreementProposal),
     principalDecision: row.principalDecision,
+    mandate: row.mandate,
     possibleActions: row.possibleActions,
   };
 }

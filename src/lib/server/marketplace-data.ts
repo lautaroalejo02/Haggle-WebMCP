@@ -3,6 +3,7 @@ import type { Database } from "@/db/client";
 import {
   accessories,
   availabilityWindows,
+  buyerMandates,
   buyerSessions,
   deliveryZones,
   events,
@@ -11,6 +12,7 @@ import {
   listingDeliveryZones,
   listingMeetingPlaces,
   listings,
+  mandateBlocks,
   negotiations,
   proposals,
   safeMeetingPlaces,
@@ -20,6 +22,7 @@ import {
 import { actionsForNegotiation } from "@/lib/marketplace/contracts";
 import type { DealTerms, DealValidationRules } from "@/lib/negotiation/state-machine";
 import { projectTimelineForViewer, type TimelineSource } from "@/lib/negotiation/timeline";
+import { MANDATE_FEATURE_ENABLED } from "@/lib/negotiation/mandate";
 
 export type PrivateListingBundle = Awaited<ReturnType<typeof getPrivateListingBundle>>;
 
@@ -271,6 +274,26 @@ export async function getNegotiationsForSession(db: Database, buyerSessionId: st
     group.push(event);
     eventsByNegotiation.set(event.negotiationId, group);
   }
+  const mandateRows = MANDATE_FEATURE_ENABLED
+    ? await db
+        .select()
+        .from(buyerMandates)
+        .where(eq(buyerMandates.buyerSessionId, buyerSessionId))
+    : [];
+  const mandateByListing = new Map(mandateRows.map((mandate) => [mandate.listingId, mandate]));
+  const blockRows = mandateRows.length
+    ? await db
+        .select()
+        .from(mandateBlocks)
+        .where(inArray(mandateBlocks.mandateId, mandateRows.map((mandate) => mandate.id)))
+        .orderBy(mandateBlocks.createdAt)
+    : [];
+  const blocksByMandate = new Map<string, typeof blockRows>();
+  for (const block of blockRows) {
+    const group = blocksByMandate.get(block.mandateId) ?? [];
+    group.push(block);
+    blocksByMandate.set(block.mandateId, group);
+  }
 
   return rows.map((row) => {
     const history = (byNegotiation.get(row.id) ?? []).map((proposal) => ({
@@ -282,14 +305,41 @@ export async function getNegotiationsForSession(db: Database, buyerSessionId: st
       message: proposal.message,
       createdAt: proposal.createdAt,
     }));
-    const timeline = projectTimelineForViewer(eventsByNegotiation.get(row.id) ?? [], "buyer");
-    const latestEvent = timeline.at(-1);
-    const awaitingBuyerRevision = latestEvent?.type === "human_declined";
+    const eventTimeline = projectTimelineForViewer(eventsByNegotiation.get(row.id) ?? [], "buyer");
+    const latestDecline = [...eventTimeline].reverse().find((event) => event.type === "human_declined");
+    const latestBuyerProposal = [...eventTimeline]
+      .reverse()
+      .find((event) => event.actor === "buyer_agent" && (event.type === "offer" || event.type === "counter"));
+    const awaitingBuyerRevision = Boolean(
+      latestDecline &&
+        (!latestBuyerProposal ||
+          (latestDecline.createdAt?.getTime() ?? 0) > (latestBuyerProposal.createdAt?.getTime() ?? 0)),
+    );
+    const mandateRecord = mandateByListing.get(row.listingId);
+    const blockTimeline = mandateRecord
+      ? (blocksByMandate.get(mandateRecord.id) ?? []).map((block) => ({
+          id: block.id,
+          negotiationId: block.negotiationId,
+          proposalId: null,
+          actor: "system",
+          type: "blocked_by_mandate",
+          message: block.message,
+          termsSnapshot: block.termsSnapshot,
+          metadata: undefined,
+          createdAt: block.createdAt,
+          reason: block.reason,
+          rejectedTerms: block.termsSnapshot,
+          amountCents: block.termsSnapshot.itemPriceCents + block.termsSnapshot.deliveryFeeCents,
+        }))
+      : [];
+    const timeline = [...eventTimeline, ...blockTimeline].sort(
+      (a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0),
+    );
     const principalDecision = awaitingBuyerRevision
       ? {
           status: "declined" as const,
-          reason: latestEvent.reason,
-          rejectedTerms: latestEvent.rejectedTerms,
+          reason: latestDecline?.reason ?? null,
+          rejectedTerms: latestDecline?.rejectedTerms ?? null,
           nextExpectedAction: "counter_offer" as const,
         }
       : null;
@@ -306,6 +356,15 @@ export async function getNegotiationsForSession(db: Database, buyerSessionId: st
       timeline,
       awaitingBuyerRevision,
       principalDecision,
+      mandate: mandateRecord
+        ? {
+            maxPrice: mandateRecord.maxPriceCents / 100,
+            maxPriceCents: mandateRecord.maxPriceCents,
+            pickupWindows: mandateRecord.pickupWindows,
+            placePolicy: mandateRecord.placePolicy,
+            mustInclude: mandateRecord.mustInclude,
+          }
+        : null,
       possibleActions,
     };
   });

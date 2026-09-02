@@ -18,6 +18,7 @@ import {
   type SellerDecision,
 } from "@/lib/negotiation/state-machine";
 import { buildHumanDeclineEvent } from "@/lib/negotiation/timeline";
+import { MANDATE_FEATURE_ENABLED } from "@/lib/negotiation/mandate";
 import { ApiError } from "@/lib/server/api";
 import {
   fallbackSellerDecision,
@@ -32,6 +33,7 @@ import {
   getPrivateListingBundle,
   validationRules,
 } from "@/lib/server/marketplace-data";
+import { enforceBuyerMandate, linkMandateToNegotiation } from "@/lib/server/mandate-service";
 
 const ACTIVE_STATUSES = ["seller_turn", "buyer_turn", "agreed_pending_approval"] as const;
 
@@ -121,7 +123,18 @@ export async function createNegotiation(
   }
   const budgetCents = await getBudgetCents(db, buyerSessionId);
   const terms = termsFromDealCommand(command, listing.deliveryFeeCents);
-  const totalCents = requireValidTerms(terms, validationRules(listing, budgetCents), "make_offer");
+  const totalCents = requireValidTerms(
+    terms,
+    validationRules(listing, MANDATE_FEATURE_ENABLED ? null : budgetCents),
+    "make_offer",
+  );
+  await enforceBuyerMandate({
+    db,
+    buyerSessionId,
+    listing,
+    terms,
+    nextAction: "make_offer",
+  });
   const negotiationId = crypto.randomUUID();
   const proposalId = crypto.randomUUID();
 
@@ -170,6 +183,8 @@ export async function createNegotiation(
     }
     throw error;
   }
+
+  await linkMandateToNegotiation(db, buyerSessionId, listingId, negotiationId);
 
   return {
     negotiation: await publicNegotiation(db, buyerSessionId, negotiationId),
@@ -228,7 +243,19 @@ export async function counterNegotiation(
     termsFromProposal(currentProposal),
     listing.deliveryFeeCents,
   );
-  const totalCents = requireValidTerms(terms, validationRules(listing, budgetCents), "counter_offer");
+  const totalCents = requireValidTerms(
+    terms,
+    validationRules(listing, MANDATE_FEATURE_ENABLED ? null : budgetCents),
+    "counter_offer",
+  );
+  await enforceBuyerMandate({
+    db,
+    buyerSessionId,
+    listing,
+    terms,
+    negotiationId,
+    nextAction: "counter_offer",
+  });
   const proposalId = crypto.randomUUID();
 
   await db.transaction(async (tx) => {
@@ -298,9 +325,17 @@ export async function acceptNegotiation(db: Database, buyerSessionId: string, ne
   const terms = termsFromProposal(currentProposal);
   const totalCents = requireValidTerms(
     terms,
-    validationRules(listing, await getBudgetCents(db, buyerSessionId)),
-    "set_budget",
+    validationRules(listing, MANDATE_FEATURE_ENABLED ? null : await getBudgetCents(db, buyerSessionId)),
+    "accept_deal",
   );
+  await enforceBuyerMandate({
+    db,
+    buyerSessionId,
+    listing,
+    terms,
+    negotiationId,
+    nextAction: "accept_deal",
+  });
 
   const changed = await db
     .update(negotiations)

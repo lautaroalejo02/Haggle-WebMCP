@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
+import { MANDATE_FEATURE_ENABLED } from "@/lib/negotiation/mandate";
 
 type WebMcpContent = { type: "text"; text: string };
 type WebMcpToolResult = { content: WebMcpContent[] };
@@ -43,6 +44,7 @@ type ContextAction = {
 type WebMcpContextResponse = {
   version: string;
   actions: {
+    mandate: ContextAction;
     make_offer: ContextAction;
     counter_offer: ContextAction;
     accept_deal: ContextAction;
@@ -126,6 +128,7 @@ function unavailableContext(): WebMcpContextResponse {
   return {
     version: "unavailable",
     actions: {
+      mandate: disabled("Buyer mandates are unavailable."),
       make_offer: disabled("Inspect an active listing first."),
       counter_offer: disabled("No seller counter is waiting."),
       accept_deal: disabled("No seller terms are waiting for acceptance."),
@@ -185,6 +188,10 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
           await refreshContextRef.current();
           setLastExecution({ toolName, phase: "succeeded", summary });
         } else {
+          const error = result.error as { code?: unknown } | undefined;
+          if (error?.code === "BLOCKED_BY_MANDATE") {
+            window.dispatchEvent(new CustomEvent("haggle:data-changed"));
+          }
           setLastExecution({ toolName, phase: "failed", summary });
         }
         return asToolContent(result);
@@ -428,6 +435,48 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
       }
 
       const makeOffer = context.actions.make_offer;
+      const mandateAction = context.actions.mandate;
+      if (MANDATE_FEATURE_ENABLED && mandateAction?.enabled) {
+        const listingIds = [...(mandateAction.listingIds ?? [])].sort();
+        desired.set("get_mandate", {
+          kind: "contextual",
+          reason: mandateAction.reason,
+          tool: {
+            name: "get_mandate",
+            description:
+              "Read the buyer's private mandate for a listing without changing state. Returns the maximum complete price, pickup windows, place policy, required included items, and recent server-side blocks.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                listingId: { type: "string", enum: listingIds, description: "Eligible listing ID." },
+              },
+              required: ["listingId"],
+              additionalProperties: false,
+            },
+            execute: async (input) =>
+              executeApi(
+                "get_mandate",
+                `/api/mandates/${encodeURIComponent(String(input.listingId ?? ""))}`,
+              ),
+          },
+        });
+        desired.set("set_mandate", {
+          kind: "contextual",
+          reason: mandateAction.reason,
+          tool: {
+            name: "set_mandate",
+            description:
+              "Set the buyer's private, server-enforced mandate for this listing. This is idempotent. Future offers, counters, and acceptances outside these boundaries are rejected by Haggle, never silently changed.",
+            inputSchema: mandateSchema(listingIds),
+            execute: async (input) =>
+              executeApi(
+                "set_mandate",
+                `/api/mandates/${encodeURIComponent(String(input.listingId ?? ""))}`,
+                { method: "POST", body: JSON.stringify({ mandate: input.mandate }) },
+              ),
+          },
+        });
+      }
       if (makeOffer.enabled) {
         const listingIds = [...(makeOffer.listingIds ?? [])].sort();
         desired.set("make_offer", {
@@ -436,7 +485,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
           tool: {
             name: "make_offer",
             description:
-              "Propose initial price and fulfillment terms for an inspected bicycle. Pickup requires a public meetingPlaceId returned by get_listing; delivery uses only a public zone, never a private address. The seller responds asynchronously and the human buyer still controls final approval.",
+              `Propose initial price and fulfillment terms for an inspected bicycle. Pickup requires a public meetingPlaceId returned by get_listing; delivery uses only a public zone, never a private address. The seller responds asynchronously and the human buyer still controls final approval.${MANDATE_FEATURE_ENABLED ? " Proposals outside the buyer's mandate are rejected by Haggle." : ""}`,
             inputSchema: dealSchema("listingId", listingIds),
             execute: async (input) =>
               executeApi("make_offer", "/api/negotiations", {
@@ -457,14 +506,14 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
           name: "counter_offer",
           action: context.actions.counter_offer,
           description:
-            "Respond to a seller counter with revised price or fulfillment terms. Use only option IDs returned by Haggle. The complete total is checked against the human's budget before another seller response is scheduled.",
+            `Respond to a seller counter with revised price or fulfillment terms. Use only option IDs returned by Haggle. The complete total is checked against the human's budget before another seller response is scheduled.${MANDATE_FEATURE_ENABLED ? " Proposals outside the buyer's mandate are rejected by Haggle." : ""}`,
           urlSuffix: "counter",
         },
         {
           name: "accept_deal",
           action: context.actions.accept_deal,
           description:
-            "Accept the seller's currently pending terms and move the negotiation to human approval. This does not purchase the bicycle or close the deal. Both buyer and seller humans must approve in the visible interface.",
+            `Accept the seller's currently pending terms and move the negotiation to human approval. This does not purchase the bicycle or close the deal. Both buyer and seller humans must approve in the visible interface.${MANDATE_FEATURE_ENABLED ? " Acceptance is rejected if the terms are outside the buyer's mandate." : ""}`,
           urlSuffix: "accept",
         },
         {
@@ -644,6 +693,41 @@ function counterSchema(ids: string[]) {
       message: { type: "string", maxLength: 280, description: "Optional polite note to the seller." },
     },
     required: ["negotiationId", "amountUsd"],
+    additionalProperties: false,
+  };
+}
+
+function mandateSchema(listingIds: string[]) {
+  return {
+    type: "object",
+    properties: {
+      listingId: { type: "string", enum: listingIds, description: "Eligible listing ID." },
+      mandate: {
+        type: "object",
+        properties: {
+          maxPrice: { type: "number", exclusiveMinimum: 0, maximum: 100000, description: "Maximum complete price in USD." },
+          pickupWindows: {
+            type: "array",
+            maxItems: 14,
+            items: {
+              type: "object",
+              properties: {
+                day: { type: "string", description: "Day name, such as Saturday." },
+                from: { type: "string", pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$", description: "Start in 24-hour HH:MM." },
+                to: { type: "string", pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$", description: "End in 24-hour HH:MM." },
+              },
+              required: ["day", "from", "to"],
+              additionalProperties: false,
+            },
+          },
+          placePolicy: { type: "string", enum: ["public_only", "any"], description: "Whether pickup must use a public place." },
+          mustInclude: { type: "array", maxItems: 10, items: { type: "string" }, description: "Listing accessory names that must remain included." },
+        },
+        required: ["maxPrice", "pickupWindows", "placePolicy", "mustInclude"],
+        additionalProperties: false,
+      },
+    },
+    required: ["listingId", "mandate"],
     additionalProperties: false,
   };
 }

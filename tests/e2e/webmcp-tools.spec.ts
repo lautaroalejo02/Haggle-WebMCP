@@ -53,6 +53,22 @@ test("registers a minimal dynamic WebMCP surface and returns guarded output", as
     nextRecommendedTool: "make_offer",
   });
 
+  if ((await registeredToolNames(page)).includes("set_mandate")) {
+    const mandateResult = await executeTool(page, "set_mandate", {
+      listingId: LISTING_ID,
+      mandate: {
+        maxPrice: 170,
+        pickupWindows: [{ day: "Saturday", from: "14:00", to: "16:00" }],
+        placePolicy: "public_only",
+        mustInclude: ["U-lock"],
+      },
+    });
+    expect(mandateResult).toMatchObject({
+      ok: true,
+      mandate: { maxPriceCents: 17_000, placePolicy: "public_only", mustInclude: ["U-lock"] },
+    });
+  }
+
   await executeTool(page, "make_offer", {
     listingId: LISTING_ID,
     amountUsd: 165,
@@ -73,6 +89,22 @@ test("registers a minimal dynamic WebMCP surface and returns guarded output", as
   expect(negotiationsResult.negotiations).toHaveLength(1);
   const negotiation = (negotiationsResult.negotiations as Array<Record<string, unknown>>)[0];
   expect(negotiation).not.toHaveProperty("history");
+
+  if ((await registeredToolNames(page)).includes("get_mandate")) {
+    await expect.poll(() => registeredToolNames(page)).toContain("accept_deal");
+    const blocked = await executeTool(page, "accept_deal", { negotiationId: negotiation.id });
+    expect(blocked).toMatchObject({
+      ok: false,
+      error: {
+        code: "BLOCKED_BY_MANDATE",
+        reason: "exceeds max price",
+        detail: { term: "price", proposed: 18_500, limit: 17_000 },
+      },
+    });
+    const status = await executeTool(page, "get_negotiation_status", { negotiationId: negotiation.id });
+    expect(status.negotiation).toMatchObject({ mandate: { maxPriceCents: 17_000 } });
+    expect(JSON.stringify(status)).toContain("Blocked by your mandate, not by your agent");
+  }
 
   const counterResult = await executeTool(page, "counter_offer", {
     negotiationId: negotiation.id,

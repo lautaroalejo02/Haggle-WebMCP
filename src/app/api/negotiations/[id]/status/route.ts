@@ -52,6 +52,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
           seller: negotiation.status === "agreed_pending_approval" && !negotiation.sellerApproved,
         },
         principalDecision: negotiation.principalDecision,
+        mandate: negotiation.mandate,
         recentTimeline: negotiation.timeline.slice(-8),
         possibleActions: negotiation.possibleActions,
       },

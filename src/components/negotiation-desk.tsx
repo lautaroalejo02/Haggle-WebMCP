@@ -6,6 +6,7 @@ import { DealSlip } from "@/components/deal-slip";
 import { StatusChip } from "@/components/status-chip";
 import type { DemoListing } from "@/lib/marketplace/demo-data";
 import { formatUsd } from "@/lib/format";
+import { MandateCard } from "@/components/mandate-card";
 
 type DealTermsView = {
   itemPriceCents: number;
@@ -121,6 +122,14 @@ export function NegotiationDesk({ listing }: { listing: DemoListing }) {
   }, [form, listing]);
   const selectedTime = listing.timeWindows.find((option) => option.id === form.timeWindowId)?.label ?? "Time to agree";
   const selectedAccessory = listing.accessories.find((option) => option.id === form.includedAccessoryId)?.name ?? null;
+  const draftTerms: DealTermsView = {
+    itemPriceCents: Math.max(0, Math.round(Number(form.amountUsd || 0) * 100)),
+    deliveryFeeCents: form.fulfillment === "delivery" ? listing.deliveryFeeCents : 0,
+    fulfillment: form.fulfillment,
+    placeName: selectedPlace,
+    timeLabel: selectedTime,
+    accessoryName: selectedAccessory,
+  };
 
   async function postAction(url: string, body: Record<string, unknown>) {
     setSubmitting(true);
@@ -134,9 +143,16 @@ export function NegotiationDesk({ listing }: { listing: DemoListing }) {
         },
         body: JSON.stringify(body),
       });
-      const result = (await response.json()) as { summary?: string; error?: { message?: string } };
+      const result = (await response.json()) as {
+        summary?: string;
+        error?: { code?: string; message?: string };
+      };
       if (!response.ok) {
         setError(result.error?.message ?? result.summary ?? "The deal could not be updated.");
+        if (result.error?.code === "BLOCKED_BY_MANDATE") {
+          window.dispatchEvent(new CustomEvent("haggle:data-changed"));
+          await refresh();
+        }
         return;
       }
       await refresh();
@@ -174,6 +190,8 @@ export function NegotiationDesk({ listing }: { listing: DemoListing }) {
         )}
       </div>
 
+      <MandateCard listing={listing} terms={negotiation?.currentTerms ?? draftTerms} />
+
       {loading ? (
         <div className="grid min-h-72 place-items-center text-ink-muted">
           <LoaderCircle className="animate-spin" />
@@ -201,12 +219,12 @@ export function NegotiationDesk({ listing }: { listing: DemoListing }) {
             </p>
           </div>
           <DealSlip
-            itemPriceCents={Math.max(0, Math.round(Number(form.amountUsd || 0) * 100))}
-            deliveryFeeCents={form.fulfillment === "delivery" ? listing.deliveryFeeCents : 0}
-            fulfillment={form.fulfillment}
-            place={selectedPlace}
-            time={selectedTime}
-            accessory={selectedAccessory}
+            itemPriceCents={draftTerms.itemPriceCents}
+            deliveryFeeCents={draftTerms.deliveryFeeCents}
+            fulfillment={draftTerms.fulfillment}
+            place={draftTerms.placeName}
+            time={draftTerms.timeLabel}
+            accessory={draftTerms.accessoryName}
             stamp="Your offer"
           />
           <form
@@ -383,7 +401,11 @@ function ExistingNegotiation({
         {negotiation.events.map((event) => (
           <div
             key={event.id}
-            className={`border-l-2 pl-3 ${event.type === "human_declined" ? "border-danger bg-tomato-soft px-3 py-2" : "border-sky"}`}
+            className={`border-l-2 pl-3 ${
+              event.type === "human_declined" || event.type === "blocked_by_mandate"
+                ? "border-danger bg-tomato-soft px-3 py-2"
+                : "border-sky"
+            }`}
           >
             <p className="text-[0.66rem] font-extrabold uppercase tracking-[0.09em] text-ink-muted">{event.actorLabel}</p>
             <p className="mt-1 text-sm leading-6">{event.message}</p>

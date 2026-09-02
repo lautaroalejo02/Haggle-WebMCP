@@ -41,6 +41,7 @@ export const eventTypeEnum = pgEnum("event_type", [
   "deal_closed",
   "expired",
   "rejected_out_of_bounds",
+  "human_declined",
   "tool_registered",
   "tool_unregistered",
 ]);

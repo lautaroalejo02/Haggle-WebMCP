@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import type { Database } from "@/db/client";
 import {
@@ -17,6 +17,7 @@ import {
   type DealTerms,
   type SellerDecision,
 } from "@/lib/negotiation/state-machine";
+import { buildHumanDeclineEvent } from "@/lib/negotiation/timeline";
 import { ApiError } from "@/lib/server/api";
 import {
   fallbackSellerDecision,
@@ -98,6 +99,16 @@ async function publicNegotiation(db: Database, sessionId: string, negotiationId:
   return (await getNegotiationsForSession(db, sessionId)).find((item) => item.id === negotiationId) ?? null;
 }
 
+async function buyerRevisionRequested(db: Database, negotiationId: string) {
+  const [latest] = await db
+    .select({ type: events.type, actor: events.actor })
+    .from(events)
+    .where(eq(events.negotiationId, negotiationId))
+    .orderBy(desc(events.createdAt))
+    .limit(1);
+  return latest?.type === "human_declined" && latest.actor === "buyer_human";
+}
+
 export async function createNegotiation(
   db: Database,
   buyerSessionId: string,
@@ -173,7 +184,8 @@ export async function counterNegotiation(
   command: CounterCommand,
 ) {
   const { record, currentProposal } = await ownedNegotiation(db, negotiationId, buyerSessionId);
-  if (record.status !== "buyer_turn" || currentProposal.side !== "seller") {
+  const revisionRequested = await buyerRevisionRequested(db, negotiationId);
+  if (record.status !== "buyer_turn" || (currentProposal.side !== "seller" && !revisionRequested)) {
     throw new ApiError(409, "NOT_BUYER_TURN", "There is no seller counter waiting for a buyer response.", [
       "get_my_negotiations",
     ]);
@@ -271,6 +283,14 @@ export async function acceptNegotiation(db: Database, buyerSessionId: string, ne
       "get_my_negotiations",
     ]);
   }
+  if (await buyerRevisionRequested(db, negotiationId)) {
+    throw new ApiError(
+      409,
+      "HUMAN_REVISION_REQUIRED",
+      "The buyer declined these terms. Submit a revised counteroffer before asking for approval again.",
+      ["counter_offer"],
+    );
+  }
   const listing = await getPrivateListingBundle(db, record.listingId);
   if (!listing || listing.status !== "active") {
     throw new ApiError(409, "LISTING_UNAVAILABLE", "That bicycle is no longer available.");
@@ -312,6 +332,54 @@ export async function acceptNegotiation(db: Database, buyerSessionId: string, ne
     termsSnapshot: terms,
     dedupeKey: `accept:${currentProposal.id}`,
   });
+  return publicNegotiation(db, buyerSessionId, negotiationId);
+}
+
+export async function declineAgreementByBuyerHuman(
+  db: Database,
+  buyerSessionId: string,
+  negotiationId: string,
+  reason?: string,
+) {
+  const { record, currentProposal } = await ownedNegotiation(db, negotiationId, buyerSessionId);
+  if (record.status !== "agreed_pending_approval" || !record.agreementProposalId) {
+    throw new ApiError(409, "NOT_PENDING_APPROVAL", "This negotiation is not waiting for human approval.");
+  }
+
+  const terms = termsFromProposal(currentProposal);
+  await db.transaction(async (tx) => {
+    const changed = await tx
+      .update(negotiations)
+      .set({
+        status: "buyer_turn",
+        agreementProposalId: null,
+        buyerApprovedAt: null,
+        sellerApprovedAt: null,
+        version: record.version + 1,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(negotiations.id, negotiationId),
+          eq(negotiations.status, "agreed_pending_approval"),
+          eq(negotiations.version, record.version),
+        ),
+      )
+      .returning({ id: negotiations.id });
+    if (!changed.length) {
+      throw new ApiError(409, "STALE_NEGOTIATION", "The negotiation changed; refresh it before acting.");
+    }
+    await tx.insert(events).values({
+      ...buildHumanDeclineEvent({
+        negotiationId,
+        proposalId: currentProposal.id,
+        reason,
+        terms,
+      }),
+      amountCents: terms.itemPriceCents + terms.deliveryFeeCents,
+    });
+  });
+
   return publicNegotiation(db, buyerSessionId, negotiationId);
 }
 

@@ -27,7 +27,7 @@ test("registers a minimal dynamic WebMCP surface and returns guarded output", as
 
   await expect
     .poll(() => registeredToolNames(page))
-    .toEqual(expect.arrayContaining(["search_listings", "get_listing", "prepare_negotiation", "get_my_negotiations", "set_budget", "make_offer"]));
+    .toEqual(expect.arrayContaining(["search_listings", "get_listing", "prepare_negotiation", "get_my_negotiations", "get_negotiation_status", "set_budget", "make_offer"]));
   await page.getByRole("button", { name: "Open Agent Lens" }).click();
   await expect(page.getByText("Page tools registered · agent unverified", { exact: true })).toBeVisible();
   await expect(page.getByText(/Registration does not prove agent access/)).toBeVisible();

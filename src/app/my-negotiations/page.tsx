@@ -23,6 +23,11 @@ type Deal = {
   };
   buyerApproved: boolean;
   sellerApproved: boolean;
+  principalDecision: {
+    status: "declined";
+    reason: string | null;
+    nextExpectedAction: "counter_offer";
+  } | null;
 };
 
 type ApiDeal = {
@@ -46,6 +51,7 @@ type ApiDeal = {
   } | null;
   buyerApproved: boolean;
   sellerApproved: boolean;
+  principalDecision: Deal["principalDecision"];
 };
 
 export default function MyNegotiationsPage() {
@@ -137,18 +143,20 @@ function toDealView(deal: ApiDeal): Deal | null {
     },
     buyerApproved: deal.buyerApproved,
     sellerApproved: deal.sellerApproved,
+    principalDecision: deal.principalDecision,
   };
 }
 
 function DealCard({ deal, onRefresh }: { deal: Deal; onRefresh: () => Promise<void> }) {
   const [submitting, setSubmitting] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
 
-  async function approve() {
+  async function postAction(path: string, body: Record<string, unknown>) {
     setSubmitting(true);
-    await fetch(`/api/negotiations/${deal.id}/approve`, {
+    await fetch(path, {
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
-      body: JSON.stringify({ actor: "buyer" }),
+      body: JSON.stringify(body),
     });
     await onRefresh();
     window.dispatchEvent(new CustomEvent("haggle:data-changed"));
@@ -177,14 +185,50 @@ function DealCard({ deal, onRefresh }: { deal: Deal; onRefresh: () => Promise<vo
         <div className="approval-takeover mt-5">
           <p className="text-sm font-extrabold">Your approval is required.</p>
           <p className="mt-1 text-xs leading-5 text-ink-muted">The seller must approve these exact terms separately.</p>
-          <button className="primary-button mt-4 w-full" type="button" disabled={deal.buyerApproved || submitting} onClick={() => void approve()}>
+          <button className="primary-button mt-4 w-full" type="button" disabled={deal.buyerApproved || submitting} onClick={() => void postAction(`/api/negotiations/${deal.id}/approve`, { actor: "buyer" })}>
             {submitting ? <LoaderCircle size={17} className="animate-spin" /> : <Check size={17} />}
             {deal.buyerApproved ? "Buyer approved" : "Approve these terms"}
           </button>
+          <label className="field-label mt-4">
+            If these terms do not work
+            <input
+              type="text"
+              maxLength={140}
+              placeholder="Optional note for your agent"
+              value={declineReason}
+              onChange={(event) => setDeclineReason(event.target.value)}
+            />
+          </label>
+          <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={submitting}
+              onClick={() => void postAction(`/api/negotiations/${deal.id}/decline`, { negotiationId: deal.id, reason: declineReason || undefined })}
+            >
+              Decline &amp; keep negotiating
+            </button>
+            <button
+              className="px-3 text-xs font-extrabold text-danger underline underline-offset-2"
+              type="button"
+              disabled={submitting}
+              onClick={() => void postAction(`/api/negotiations/${deal.id}/reject`, { negotiationId: deal.id })}
+            >
+              End negotiation
+            </button>
+          </div>
         </div>
       ) : null}
       {deal.status === "seller_turn" ? (
         <p className="mt-5 flex items-center gap-2 bg-mustard-soft px-3 py-3 text-sm font-semibold"><Bot size={17} /> Seller agent is considering round {deal.round}.</p>
+      ) : null}
+      {deal.status === "buyer_turn" && deal.principalDecision?.status === "declined" ? (
+        <div className="mt-5 border-l-4 border-mustard bg-mustard-soft px-3 py-3">
+          <p className="text-sm font-extrabold">Your agent has the next move.</p>
+          <p className="mt-1 text-xs leading-5 text-ink-muted">
+            {deal.principalDecision.reason || "You asked it to find better terms."}
+          </p>
+        </div>
       ) : null}
       <Link href={`/listings/${deal.listing.id}`} className="mt-5 inline-flex items-center gap-2 text-sm font-extrabold hover:text-signal">Open negotiation <ArrowRight size={15} /></Link>
     </article>

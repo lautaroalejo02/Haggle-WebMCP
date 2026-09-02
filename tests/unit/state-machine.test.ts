@@ -5,6 +5,7 @@ import {
   applyHumanApproval,
   counterByBuyer,
   counterBySeller,
+  declineAgreementByBuyer,
   enforceSellerFloor,
   startNegotiation,
   validateDealTerms,
@@ -297,5 +298,22 @@ describe("human approval", () => {
     const twice = applyHumanApproval(once, "buyer");
 
     expect(twice).toEqual(once);
+  });
+
+  it("keeps the negotiation open when the buyer human declines provisional terms", () => {
+    const started = startNegotiation({ proposalId: "p1", terms: pickupTerms });
+    const sellerTurn = counterBySeller(started, {
+      proposalId: "p2",
+      terms: { ...pickupTerms, itemPriceCents: 18_500 },
+    });
+    const declined = declineAgreementByBuyer(acceptSellerProposal(sellerTurn));
+
+    expect(declined).toMatchObject({
+      status: "buyer_turn",
+      agreementProposal: null,
+      buyerApproved: false,
+      sellerApproved: false,
+      currentProposal: { id: "p2", terms: { itemPriceCents: 18_500 } },
+    });
   });
 });

@@ -22,9 +22,9 @@ export async function GET(request: NextRequest) {
     const active = sessionNegotiations.filter((item) =>
       ["seller_turn", "buyer_turn", "agreed_pending_approval"].includes(item.status),
     );
-    const canCounter = active.filter((item) => item.status === "buyer_turn" && item.round < item.maxRounds);
-    const canAccept = active.filter((item) => item.status === "buyer_turn");
-    const canReject = active.filter((item) => item.status === "buyer_turn" || item.status === "seller_turn");
+    const canCounter = active.filter((item) => item.possibleActions.includes("counter_offer"));
+    const canAccept = active.filter((item) => item.possibleActions.includes("accept_deal"));
+    const canReject = active.filter((item) => item.possibleActions.includes("reject_deal"));
 
     let makeOffer: MakeOfferContext = disabled(
       "Open or inspect an active listing that has no negotiation in this session.",

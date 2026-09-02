@@ -328,6 +328,18 @@ export function applyHumanApproval(
   };
 }
 
+export function declineAgreementByBuyer(state: NegotiationState): NegotiationState {
+  requireState(state, "agreed_pending_approval");
+
+  return {
+    ...state,
+    status: "buyer_turn",
+    agreementProposal: null,
+    buyerApproved: false,
+    sellerApproved: false,
+  };
+}
+
 export type SellerDecision =
   | { action: "accept"; message: string }
   | { action: "reject"; message: string }

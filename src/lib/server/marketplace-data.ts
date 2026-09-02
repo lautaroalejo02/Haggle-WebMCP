@@ -19,6 +19,7 @@ import {
 } from "@/db/schema";
 import { actionsForNegotiation } from "@/lib/marketplace/contracts";
 import type { DealTerms, DealValidationRules } from "@/lib/negotiation/state-machine";
+import { projectTimelineForViewer, type TimelineSource } from "@/lib/negotiation/timeline";
 
 export type PrivateListingBundle = Awaited<ReturnType<typeof getPrivateListingBundle>>;
 
@@ -246,16 +247,29 @@ export async function getNegotiationsForSession(db: Database, buyerSessionId: st
     .orderBy(desc(negotiations.updatedAt));
 
   if (rows.length === 0) return [];
-  const proposalRows = await db
-    .select()
-    .from(proposals)
-    .where(inArray(proposals.negotiationId, rows.map((row) => row.id)))
-    .orderBy(proposals.sequence);
+  const [proposalRows, eventRows] = await Promise.all([
+    db
+      .select()
+      .from(proposals)
+      .where(inArray(proposals.negotiationId, rows.map((row) => row.id)))
+      .orderBy(proposals.sequence),
+    db
+      .select()
+      .from(events)
+      .where(inArray(events.negotiationId, rows.map((row) => row.id)))
+      .orderBy(events.createdAt),
+  ]);
   const byNegotiation = new Map<string, ProposalRecord[]>();
   for (const proposal of proposalRows) {
     const group = byNegotiation.get(proposal.negotiationId) ?? [];
     group.push(proposal);
     byNegotiation.set(proposal.negotiationId, group);
+  }
+  const eventsByNegotiation = new Map<string, TimelineSource[]>();
+  for (const event of eventRows) {
+    const group = eventsByNegotiation.get(event.negotiationId) ?? [];
+    group.push(event);
+    eventsByNegotiation.set(event.negotiationId, group);
   }
 
   return rows.map((row) => {
@@ -268,6 +282,20 @@ export async function getNegotiationsForSession(db: Database, buyerSessionId: st
       message: proposal.message,
       createdAt: proposal.createdAt,
     }));
+    const timeline = projectTimelineForViewer(eventsByNegotiation.get(row.id) ?? [], "buyer");
+    const latestEvent = timeline.at(-1);
+    const awaitingBuyerRevision = latestEvent?.type === "human_declined";
+    const principalDecision = awaitingBuyerRevision
+      ? {
+          status: "declined" as const,
+          reason: latestEvent.reason,
+          rejectedTerms: latestEvent.rejectedTerms,
+          nextExpectedAction: "counter_offer" as const,
+        }
+      : null;
+    const possibleActions = actionsForNegotiation(row.status, row.round, row.maxRounds).filter(
+      (action) => !awaitingBuyerRevision || action !== "accept_deal",
+    );
     return {
       ...row,
       buyerApproved: row.buyerApprovedAt !== null,
@@ -275,7 +303,10 @@ export async function getNegotiationsForSession(db: Database, buyerSessionId: st
       currentProposal: history.find((proposal) => proposal.id === row.currentProposalId) ?? null,
       agreementProposal: history.find((proposal) => proposal.id === row.agreementProposalId) ?? null,
       history,
-      possibleActions: actionsForNegotiation(row.status, row.round, row.maxRounds),
+      timeline,
+      awaitingBuyerRevision,
+      principalDecision,
+      possibleActions,
     };
   });
 }

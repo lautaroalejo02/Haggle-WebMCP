@@ -81,6 +81,7 @@ const BASE_REASONS: Record<string, string> = {
   get_listing: "Available anywhere for public details and valid deal options.",
   prepare_negotiation: "Verifies real session state and reveals the valid negotiation action.",
   get_my_negotiations: "Available anywhere for this browser session's deals.",
+  get_negotiation_status: "Reads one negotiation, including the latest decision from its human principal.",
   set_budget: "Available anywhere as an optional human spending guardrail.",
 };
 
@@ -282,6 +283,28 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
           "Get this browser session's negotiations, current structured terms, whose turn it is, and currently possible actions. Use it after a seller has had several seconds to respond or whenever deal state may have changed. Results never include another buyer's activity.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         execute: async () => executeApi("get_my_negotiations", "/api/negotiations?agent=1"),
+      },
+      {
+        name: "get_negotiation_status",
+        description:
+          "Read one negotiation's current terms, turn, approvals, valid next actions, and recent timeline without changing state. If the buyer human declined provisional terms, principalDecision contains their private reason and the rejected terms so the buyer agent can revise its next proposal.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            negotiationId: {
+              type: "string",
+              minLength: 1,
+              description: "Negotiation ID returned by get_my_negotiations or a mutation tool.",
+            },
+          },
+          required: ["negotiationId"],
+          additionalProperties: false,
+        },
+        execute: async (input) =>
+          executeApi(
+            "get_negotiation_status",
+            `/api/negotiations/${encodeURIComponent(String(input.negotiationId ?? ""))}/status`,
+          ),
       },
       {
         name: "set_budget",

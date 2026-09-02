@@ -1,0 +1,1 @@
+ALTER TYPE "public"."event_type" ADD VALUE 'human_declined' BEFORE 'tool_registered';

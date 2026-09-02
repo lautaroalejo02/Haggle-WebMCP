@@ -31,6 +31,7 @@ type NegotiationView = {
     actorLabel: string;
     message: string;
     amountCents: number | null;
+    type: string;
   }>;
 };
 
@@ -54,6 +55,13 @@ type ApiNegotiation = Omit<NegotiationView, "currentTerms" | "agreementTerms" | 
   currentProposal: ApiProposal;
   agreementProposal: ApiProposal | null;
   history: ApiProposal[];
+  timeline: Array<{
+    id?: string;
+    actor: string;
+    type: string;
+    message: string | null;
+    amountCents: number | null;
+  }>;
 };
 
 type FormState = {
@@ -176,6 +184,12 @@ export function NegotiationDesk({ listing }: { listing: DemoListing }) {
           submitting={submitting}
           onAccept={() => postAction(`/api/negotiations/${negotiation.id}/accept`, { negotiationId: negotiation.id })}
           onApprove={() => postAction(`/api/negotiations/${negotiation.id}/approve`, { actor: "buyer" })}
+          onDecline={(reason) =>
+            postAction(`/api/negotiations/${negotiation.id}/decline`, {
+              negotiationId: negotiation.id,
+              reason: reason || undefined,
+            })
+          }
           onReject={() => postAction(`/api/negotiations/${negotiation.id}/reject`, { negotiationId: negotiation.id })}
         />
       ) : (
@@ -306,12 +320,30 @@ function toNegotiationView(negotiation: ApiNegotiation, listing: DemoListing): N
     possibleActions: negotiation.possibleActions,
     buyerApproved: negotiation.buyerApproved,
     sellerApproved: negotiation.sellerApproved,
-    events: negotiation.history.map((proposal) => ({
-      id: proposal.id,
-      actorLabel: proposal.side === "buyer" ? "Buyer agent" : listing.seller.name,
-      message: proposal.message,
-      amountCents: proposal.terms.itemPriceCents + proposal.terms.deliveryFeeCents,
-    })),
+    events: negotiation.timeline?.length
+      ? negotiation.timeline.map((event, index) => ({
+          id: event.id ?? `${event.type}-${index}`,
+          actorLabel:
+            event.actor === "buyer_agent"
+              ? "Buyer agent"
+              : event.actor === "seller_agent"
+                ? listing.seller.name
+                : event.actor === "buyer_human"
+                  ? "You"
+                  : event.actor === "seller_human"
+                    ? "Seller"
+                    : "Haggle",
+          message: event.message ?? "Negotiation updated.",
+          amountCents: event.amountCents,
+          type: event.type,
+        }))
+      : negotiation.history.map((proposal) => ({
+          id: proposal.id,
+          actorLabel: proposal.side === "buyer" ? "Buyer agent" : listing.seller.name,
+          message: proposal.message,
+          amountCents: proposal.terms.itemPriceCents + proposal.terms.deliveryFeeCents,
+          type: proposal.side === "buyer" ? "offer" : "counter",
+        })),
   };
 }
 
@@ -320,14 +352,17 @@ function ExistingNegotiation({
   submitting,
   onAccept,
   onApprove,
+  onDecline,
   onReject,
 }: {
   negotiation: NegotiationView;
   submitting: boolean;
   onAccept: () => void;
   onApprove: () => void;
+  onDecline: (reason: string) => void;
   onReject: () => void;
 }) {
+  const [declineReason, setDeclineReason] = useState("");
   const terms = negotiation.agreementTerms ?? negotiation.currentTerms;
   return (
     <div className="pt-5">
@@ -346,7 +381,10 @@ function ExistingNegotiation({
       />
       <div className="mt-5 max-h-52 space-y-3 overflow-y-auto border-y border-ink/15 py-4">
         {negotiation.events.map((event) => (
-          <div key={event.id} className="border-l-2 border-sky pl-3">
+          <div
+            key={event.id}
+            className={`border-l-2 pl-3 ${event.type === "human_declined" ? "border-danger bg-tomato-soft px-3 py-2" : "border-sky"}`}
+          >
             <p className="text-[0.66rem] font-extrabold uppercase tracking-[0.09em] text-ink-muted">{event.actorLabel}</p>
             <p className="mt-1 text-sm leading-6">{event.message}</p>
           </div>
@@ -361,10 +399,18 @@ function ExistingNegotiation({
       ) : null}
 
       {negotiation.status === "buyer_turn" ? (
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          <button type="button" className="primary-button" onClick={onAccept} disabled={submitting}>Accept terms</button>
-          <button type="button" className="secondary-button" onClick={onReject} disabled={submitting}>End negotiation</button>
-        </div>
+        negotiation.possibleActions.includes("accept_deal") ? (
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <button type="button" className="primary-button" onClick={onAccept} disabled={submitting}>Accept terms</button>
+            <button type="button" className="secondary-button" onClick={onReject} disabled={submitting}>End negotiation</button>
+          </div>
+        ) : (
+          <div className="mt-5 border-l-4 border-mustard bg-mustard-soft px-4 py-4">
+            <p className="text-sm font-extrabold">Your agent has the next move.</p>
+            <p className="mt-1 text-xs leading-5 text-ink-muted">It can read your reason with <code className="font-bold">get_negotiation_status</code> and propose revised terms.</p>
+            <button type="button" className="secondary-button mt-3" onClick={onReject} disabled={submitting}>End negotiation</button>
+          </div>
+        )
       ) : null}
 
       {negotiation.status === "agreed_pending_approval" ? (
@@ -376,11 +422,28 @@ function ExistingNegotiation({
               <p className="mt-2 text-sm leading-6 text-ink-muted">Review every field above. Your approval is required, and the seller must approve separately.</p>
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-4">
             <button type="button" className="primary-button" onClick={onApprove} disabled={submitting || negotiation.buyerApproved}>
               <Check size={18} /> {negotiation.buyerApproved ? "You approved" : "Approve these terms"}
             </button>
-            <button type="button" className="secondary-button" onClick={onReject} disabled={submitting}>Decline</button>
+            <label className="field-label mt-4">
+              If these terms do not work
+              <input
+                type="text"
+                maxLength={140}
+                placeholder="Optional note for your agent"
+                value={declineReason}
+                onChange={(event) => setDeclineReason(event.target.value)}
+              />
+            </label>
+            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
+              <button type="button" className="secondary-button" onClick={() => onDecline(declineReason)} disabled={submitting}>
+                Decline &amp; keep negotiating
+              </button>
+              <button type="button" className="px-3 text-xs font-extrabold text-danger underline underline-offset-2" onClick={onReject} disabled={submitting}>
+                End negotiation
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

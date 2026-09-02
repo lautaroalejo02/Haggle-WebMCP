@@ -15,11 +15,37 @@ test("buyer and seller humans close the deterministic agent-negotiated deal", as
 
   await page.getByRole("button", { name: "Accept terms" }).click();
   await expect(page.getByRole("button", { name: "Approve these terms" })).toBeVisible();
+  await page.getByLabel("If these terms do not work").fill("Try $180 if the lock stays included.");
+  await page.getByRole("button", { name: "Decline & keep negotiating" }).click();
+  await expect(page.getByText("Your agent has the next move.")).toBeVisible();
+  await expect(page.getByText(/Try \$180 if the lock stays included/)).toBeVisible();
+
   const negotiationId = await page.evaluate(async () => {
     const response = await fetch("/api/negotiations", { cache: "no-store" });
     const result = (await response.json()) as { negotiations: Array<{ id: string; status: string }> };
-    return result.negotiations.find((item) => item.status === "agreed_pending_approval")!.id;
+    return result.negotiations.find((item) => item.status === "buyer_turn")!.id;
   });
+  const statusAfterDecline = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/negotiations/${id}/status`, { cache: "no-store" });
+    return response.json() as Promise<{
+      negotiation: {
+        principalDecision: { reason: string };
+        possibleActions: string[];
+      };
+    }>;
+  }, negotiationId);
+  expect(statusAfterDecline.negotiation.principalDecision.reason).toBe("Try $180 if the lock stays included.");
+  expect(statusAfterDecline.negotiation.possibleActions).toContain("counter_offer");
+  expect(statusAfterDecline.negotiation.possibleActions).not.toContain("accept_deal");
+
+  await page.evaluate(async (id) => {
+    await fetch(`/api/negotiations/${id}/counter`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
+      body: JSON.stringify({ negotiationId: id, amountUsd: 180, keepCurrentTerms: true }),
+    });
+  }, negotiationId);
+  await expect(page.getByRole("button", { name: "Approve these terms" })).toBeVisible();
   await page.getByRole("button", { name: "Approve these terms" }).click();
   await expect(page.getByRole("button", { name: "You approved" })).toBeVisible();
 

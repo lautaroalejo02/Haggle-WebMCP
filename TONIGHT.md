@@ -32,11 +32,13 @@ The deterministic browser test also completes the full buyer decline → agent r
 
 ## Manual steps
 
-1. In Vercel, set `NEXT_PUBLIC_FEATURE_MANDATE=true` for Production, then redeploy. This is the only new environment variable.
-2. Confirm Vercel uses the same `DATABASE_URL` migrated tonight. Migration `drizzle/0002_rapid_callisto.sql` is already applied to the database configured in the local environment. If Production points elsewhere, run `npm run db:migrate` against that database once.
-3. Keep `DEMO_MODE=true` for judging. The seed data remains intact and sessions are isolated.
-4. Add `OPENAI_API_KEY` and keep `OPENAI_MODEL=gpt-5.6-luna` to use model-written seller replies. Without a key, the deterministic seller policy fallback still completes the demo.
-5. No manual seed or destructive database reset is required.
+No manual step remains for the linked production deployment. `NEXT_PUBLIC_FEATURE_MANDATE=true` is set, the additive migration is applied to its configured database, the OpenAI key and Luna model are present, and [haggle-web-mcp.vercel.app](https://haggle-web-mcp.vercel.app) is deployed and verified.
+
+For a different Vercel project or database:
+
+1. Set `NEXT_PUBLIC_FEATURE_MANDATE=true`, `DEMO_MODE=true`, `OPENAI_MODEL=gpt-5.6-luna`, `DATABASE_URL`, and optionally `OPENAI_API_KEY`, then deploy. The public feature flag is read at build time.
+2. Run `npm run db:migrate` once against that database. Migration `drizzle/0002_rapid_callisto.sql` is additive.
+3. Seed only a new, empty database. No destructive reset is required for the current demo.
 
 ## Three-minute demo shot list
 

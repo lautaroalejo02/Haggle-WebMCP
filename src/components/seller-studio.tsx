@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot, Check, CircleAlert, LockKeyhole, Plus, ShieldCheck } from "lucide-react";
+import { ApprovalDiff, type ApprovalDiffRow } from "@/components/approval-diff";
 import { DealSlip } from "@/components/deal-slip";
 import type { DemoListing } from "@/lib/marketplace/demo-data";
 import { formatUsd } from "@/lib/format";
@@ -31,6 +32,8 @@ type PendingApproval = {
   id: string;
   buyerApprovedAt: string | null;
   listing: { id: string; title: string; photoUrl: string };
+  originalIncludedAccessoryId: string | null;
+  privateReview: { priceWithinPrivateMinimum: boolean };
   agreement: {
     itemPriceCents: number;
     deliveryFeeCents: number;
@@ -145,6 +148,15 @@ export function SellerStudio({ listings }: { listings: DemoListing[] }) {
                       : listing?.deliveryZones.find((item) => item.id === approval.agreement.deliveryZoneId)?.name ?? "Delivery zone";
                   const time = listing?.timeWindows.find((item) => item.id === approval.agreement.timeWindowId)?.label ?? approval.agreement.timeWindowId;
                   const accessory = listing?.accessories.find((item) => item.id === approval.agreement.includedAccessoryId)?.name ?? null;
+                  const originalAccessory = listing?.accessories.find((item) => item.id === approval.originalIncludedAccessoryId)?.name ?? null;
+                  const reviewRows = sellerApprovalRows({
+                    approval,
+                    listing,
+                    place,
+                    time,
+                    accessory,
+                    originalAccessory,
+                  });
                   return (
                     <article key={approval.id} className="border-l-4 border-moss bg-paper-raised px-5 py-5">
                       <p className="eyebrow">Terms found · {approval.listing.title}</p>
@@ -161,6 +173,10 @@ export function SellerStudio({ listings }: { listings: DemoListing[] }) {
                       </div>
                       <p className="mt-4 text-xs font-bold text-moss">
                         {approval.buyerApprovedAt ? "Buyer approved ✓" : "Buyer decision pending"}
+                      </p>
+                      <ApprovalDiff title="Terms against your private limits" rows={reviewRows} />
+                      <p className="mt-3 flex items-start gap-2 text-[0.68rem] leading-5 text-ink-muted">
+                        <LockKeyhole size={14} className="mt-0.5 shrink-0" /> Private values are checked on the server and stay out of this response.
                       </p>
                       <button
                         type="button"
@@ -254,4 +270,64 @@ export function SellerStudio({ listings }: { listings: DemoListing[] }) {
       </div>
     </main>
   );
+}
+
+function sellerApprovalRows({
+  approval,
+  listing,
+  place,
+  time,
+  accessory,
+  originalAccessory,
+}: {
+  approval: PendingApproval;
+  listing: DemoListing | undefined;
+  place: string;
+  time: string;
+  accessory: string | null;
+  originalAccessory: string | null;
+}): ApprovalDiffRow[] {
+  const methodAllowed =
+    approval.agreement.fulfillment === "pickup"
+      ? Boolean(listing?.allowsPickup)
+      : Boolean(listing?.allowsDelivery);
+  const timeAllowed = Boolean(listing?.timeWindows.some((window) => window.id === approval.agreement.timeWindowId));
+  const placeAllowed =
+    approval.agreement.fulfillment === "pickup"
+      ? Boolean(listing?.meetingPlaces.some((item) => item.id === approval.agreement.meetingPlaceId))
+      : Boolean(listing?.deliveryZones.some((item) => item.id === approval.agreement.deliveryZoneId));
+  return [
+    {
+      label: "Price",
+      value: `${formatUsd(approval.agreement.itemPriceCents + approval.agreement.deliveryFeeCents)} complete · ${approval.privateReview.priceWithinPrivateMinimum ? "inside your private boundary" : "below your private boundary"}`,
+      state: approval.privateReview.priceWithinPrivateMinimum ? "good" : "warning",
+    },
+    {
+      label: "Method",
+      value: `${approval.agreement.fulfillment} · ${methodAllowed ? "allowed" : "outside listing terms"}`,
+      state: methodAllowed ? "good" : "warning",
+    },
+    {
+      label: "Time",
+      value: `${time} · ${timeAllowed ? "in your availability" : "outside your availability"}`,
+      state: timeAllowed ? "good" : "warning",
+    },
+    {
+      label: "Place",
+      value: `${place} · ${placeAllowed ? "listing-approved" : "unverified"}`,
+      state: placeAllowed ? "good" : "warning",
+    },
+    {
+      label: "Included",
+      value:
+        accessory && accessory !== originalAccessory
+          ? `${accessory} · added by your agent`
+          : accessory
+            ? `${accessory} · kept from the buyer's offer`
+            : originalAccessory
+              ? `${originalAccessory} · removed during negotiation`
+              : "No extras included",
+      state: "neutral",
+    },
+  ];
 }

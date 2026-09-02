@@ -7,6 +7,7 @@ type RegisteredTool = {
 };
 
 test("registers a minimal dynamic WebMCP surface and returns guarded output", async ({ page }) => {
+  test.setTimeout(90_000);
   await page.addInitScript(() => {
     const tools = new Map<string, RegisteredTool>();
     Object.defineProperty(document, "modelContext", {

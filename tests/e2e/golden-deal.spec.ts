@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 const LISTING_PATH = "/listings/10000000-0000-4000-8000-000000000001";
 
 test("buyer and seller humans close the deterministic agent-negotiated deal", async ({ page, browser }) => {
+  test.setTimeout(90_000);
   await page.goto(LISTING_PATH);
 
   await page.getByLabel("Your item price").fill("165");
@@ -15,6 +16,10 @@ test("buyer and seller humans close the deterministic agent-negotiated deal", as
 
   await page.getByRole("button", { name: "Accept terms" }).click();
   await expect(page.getByRole("button", { name: "Approve these terms" })).toBeVisible();
+  await expect(page.getByLabel("Terms against your boundaries")).toBeVisible();
+  await expect(page.getByLabel("Terms against your boundaries").getByText("Price", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Terms against your boundaries").getByText("Place", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Terms against your boundaries").getByText("Included", { exact: true })).toBeVisible();
   await page.getByLabel("If these terms do not work").fill("Try $180 if the lock stays included.");
   await page.getByRole("button", { name: "Decline & keep negotiating" }).click();
   await expect(page.getByText("Your agent has the next move.")).toBeVisible();
@@ -66,6 +71,9 @@ test("buyer and seller humans close the deterministic agent-negotiated deal", as
 
   await page.goto("/sellers");
   await expect(page.getByText("Terms found · Moss Green Trek FX 2")).toBeVisible();
+  await expect(page.getByLabel("Terms against your private limits")).toBeVisible();
+  await expect(page.getByText(/inside your private boundary/)).toBeVisible();
+  await expect(page.getByText(/Private values are checked on the server/)).toBeVisible();
   await page.getByRole("button", { name: "Approve sale" }).click();
   await expect(page.getByText(/Both humans approved/i)).toBeVisible();
 

@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot, Check, CircleAlert, LoaderCircle, LockKeyhole, ShieldCheck } from "lucide-react";
+import { ApprovalDiff, type ApprovalDiffRow } from "@/components/approval-diff";
 import { DealSlip } from "@/components/deal-slip";
 import { StatusChip } from "@/components/status-chip";
 import type { DemoListing } from "@/lib/marketplace/demo-data";
 import { formatUsd } from "@/lib/format";
-import { MandateCard } from "@/components/mandate-card";
+import { MandateCard, type BuyerMandateView } from "@/components/mandate-card";
+import { MANDATE_FEATURE_ENABLED, pickupWindowFromLabel } from "@/lib/negotiation/mandate";
 
 type DealTermsView = {
   itemPriceCents: number;
@@ -23,7 +25,10 @@ type NegotiationView = {
   round: number;
   maxRounds: number;
   currentTerms: DealTermsView;
+  originalTerms: DealTermsView;
   agreementTerms: DealTermsView | null;
+  buyerBudgetCents: number | null;
+  mandate: BuyerMandateView | null;
   possibleActions: string[];
   buyerApproved: boolean;
   sellerApproved: boolean;
@@ -51,11 +56,13 @@ type ApiProposal = {
   message: string;
 };
 
-type ApiNegotiation = Omit<NegotiationView, "currentTerms" | "agreementTerms" | "events"> & {
+type ApiNegotiation = Omit<NegotiationView, "currentTerms" | "originalTerms" | "agreementTerms" | "events"> & {
   listingId: string;
   currentProposal: ApiProposal;
   agreementProposal: ApiProposal | null;
   history: ApiProposal[];
+  buyerBudgetCents: number | null;
+  mandate: BuyerMandateView | null;
   timeline: Array<{
     id?: string;
     actor: string;
@@ -198,6 +205,7 @@ export function NegotiationDesk({ listing }: { listing: DemoListing }) {
         </div>
       ) : negotiation ? (
         <ExistingNegotiation
+          listing={listing}
           negotiation={negotiation}
           submitting={submitting}
           onAccept={() => postAction(`/api/negotiations/${negotiation.id}/accept`, { negotiationId: negotiation.id })}
@@ -334,7 +342,10 @@ function toNegotiationView(negotiation: ApiNegotiation, listing: DemoListing): N
     round: negotiation.round,
     maxRounds: negotiation.maxRounds,
     currentTerms: toTerms(negotiation.currentProposal),
+    originalTerms: toTerms(negotiation.history.find((proposal) => proposal.side === "buyer") ?? negotiation.currentProposal),
     agreementTerms: negotiation.agreementProposal ? toTerms(negotiation.agreementProposal) : null,
+    buyerBudgetCents: negotiation.buyerBudgetCents,
+    mandate: negotiation.mandate,
     possibleActions: negotiation.possibleActions,
     buyerApproved: negotiation.buyerApproved,
     sellerApproved: negotiation.sellerApproved,
@@ -366,6 +377,7 @@ function toNegotiationView(negotiation: ApiNegotiation, listing: DemoListing): N
 }
 
 function ExistingNegotiation({
+  listing,
   negotiation,
   submitting,
   onAccept,
@@ -373,6 +385,7 @@ function ExistingNegotiation({
   onDecline,
   onReject,
 }: {
+  listing: DemoListing;
   negotiation: NegotiationView;
   submitting: boolean;
   onAccept: () => void;
@@ -444,6 +457,7 @@ function ExistingNegotiation({
               <p className="mt-2 text-sm leading-6 text-ink-muted">Review every field above. Your approval is required, and the seller must approve separately.</p>
             </div>
           </div>
+          <ApprovalDiff title="Terms against your boundaries" rows={buyerApprovalRows(negotiation, listing, terms)} />
           <div className="mt-4">
             <button type="button" className="primary-button" onClick={onApprove} disabled={submitting || negotiation.buyerApproved}>
               <Check size={18} /> {negotiation.buyerApproved ? "You approved" : "Approve these terms"}
@@ -479,6 +493,89 @@ function ExistingNegotiation({
       ) : null}
     </div>
   );
+}
+
+function buyerApprovalRows(
+  negotiation: NegotiationView,
+  listing: DemoListing,
+  terms: DealTermsView,
+): ApprovalDiffRow[] {
+  const totalCents = terms.itemPriceCents + terms.deliveryFeeCents;
+  const original = negotiation.originalTerms;
+  const originalTotalCents = original.itemPriceCents + original.deliveryFeeCents;
+  const activeMandate = MANDATE_FEATURE_ENABLED ? negotiation.mandate : null;
+  const maxCents = activeMandate?.maxPriceCents ?? negotiation.buyerBudgetCents;
+  const priceRow: ApprovalDiffRow = maxCents
+    ? {
+        label: "Price",
+        value: `${formatUsd(totalCents)} complete vs ${formatUsd(maxCents)} ${activeMandate ? "mandate" : "budget"} max`,
+        state: totalCents <= maxCents ? "good" : "warning",
+      }
+    : {
+        label: "Price",
+        value: `${formatUsd(totalCents)} complete · ${signedMoney(totalCents - originalTotalCents)} from your first offer`,
+        state: totalCents <= originalTotalCents ? "good" : "neutral",
+      };
+
+  const proposedWindow = pickupWindowFromLabel(terms.timeLabel);
+  const withinMandateWindow =
+    terms.fulfillment === "delivery" ||
+    Boolean(
+      proposedWindow &&
+        activeMandate?.pickupWindows.some(
+          (window) =>
+            window.day.toLowerCase() === proposedWindow.day.toLowerCase() &&
+            proposedWindow.from >= window.from &&
+            proposedWindow.to <= window.to,
+        ),
+    );
+  const timeSame = terms.timeLabel === original.timeLabel;
+  const methodSame = terms.fulfillment === original.fulfillment;
+  const placeSame = terms.placeName === original.placeName;
+  const currentAccessory = terms.accessoryName;
+  const originalAccessory = original.accessoryName;
+  const knownPublicPlace =
+    terms.fulfillment === "pickup"
+      ? listing.meetingPlaces.some((place) => place.name === terms.placeName)
+      : listing.deliveryZones.some((zone) => zone.name === terms.placeName);
+
+  return [
+    priceRow,
+    {
+      label: "Method",
+      value: `${terms.fulfillment} · ${methodSame ? "same as your first offer" : `changed from ${original.fulfillment}`}`,
+      state: methodSame ? "good" : "neutral",
+    },
+    {
+      label: "Time",
+      value: activeMandate
+        ? `${terms.timeLabel} · ${withinMandateWindow ? "within your window" : "outside your windows"}`
+        : `${terms.timeLabel} · ${timeSame ? "same as your first offer" : `changed from ${original.timeLabel}`}`,
+      state: activeMandate ? (withinMandateWindow ? "good" : "warning") : timeSame ? "good" : "neutral",
+    },
+    {
+      label: "Place",
+      value: `${terms.placeName} · ${knownPublicPlace ? (terms.fulfillment === "pickup" ? "public" : "listed delivery zone") : "unverified"}${placeSame ? " · unchanged" : " · changed"}`,
+      state: knownPublicPlace ? "good" : "warning",
+    },
+    {
+      label: "Included",
+      value: accessoryComparison(currentAccessory, originalAccessory),
+      state: currentAccessory || !originalAccessory ? "good" : "warning",
+    },
+  ];
+}
+
+function accessoryComparison(current: string | null, original: string | null) {
+  if (current && current !== original) return `${current} · added by seller`;
+  if (current) return `${current} · kept from your first offer`;
+  if (original) return `${original} · no longer included`;
+  return "No extras requested";
+}
+
+function signedMoney(deltaCents: number) {
+  if (deltaCents === 0) return "unchanged";
+  return `${deltaCents > 0 ? "+" : "−"}${formatUsd(Math.abs(deltaCents))}`;
 }
 
 function ErrorMessage({ message }: { message: string }) {

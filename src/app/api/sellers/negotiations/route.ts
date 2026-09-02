@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { getDatabase } from "@/db/client";
 import { listings, negotiations, proposals } from "@/db/schema";
@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
         sellerApprovedAt: negotiations.sellerApprovedAt,
         updatedAt: negotiations.updatedAt,
         listing: { id: listings.id, title: listings.title, photoUrl: listings.photoUrl },
+        privateFloorPriceCents: listings.floorPriceCents,
         agreement: {
           itemPriceCents: proposals.itemPriceCents,
           deliveryFeeCents: proposals.deliveryFeeCents,
@@ -43,12 +44,39 @@ export async function GET(request: NextRequest) {
         ),
       )
       .orderBy(desc(negotiations.updatedAt));
+    const firstBuyerProposals = rows.length
+      ? await db
+          .select({
+            negotiationId: proposals.negotiationId,
+            sequence: proposals.sequence,
+            side: proposals.side,
+            includedAccessoryId: proposals.includedAccessoryId,
+          })
+          .from(proposals)
+          .where(inArray(proposals.negotiationId, rows.map((row) => row.id)))
+          .orderBy(asc(proposals.sequence))
+      : [];
+    const originalAccessoryByNegotiation = new Map<string, string | null>();
+    for (const proposal of firstBuyerProposals) {
+      if (proposal.side === "buyer" && !originalAccessoryByNegotiation.has(proposal.negotiationId)) {
+        originalAccessoryByNegotiation.set(proposal.negotiationId, proposal.includedAccessoryId);
+      }
+    }
+    const queue = rows.map(({ privateFloorPriceCents, ...row }) => ({
+      ...row,
+      originalIncludedAccessoryId: originalAccessoryByNegotiation.get(row.id) ?? null,
+      privateReview: {
+        priceWithinPrivateMinimum:
+          typeof row.agreement?.itemPriceCents === "number" &&
+          row.agreement.itemPriceCents >= privateFloorPriceCents,
+      },
+    }));
     return NextResponse.json({
       ok: true,
-      summary: `${rows.length} deal${rows.length === 1 ? "" : "s"} waiting for seller review.`,
-      negotiations: rows,
-      data: rows,
-      possibleNextActions: rows.length ? ["seller_approve"] : [],
+      summary: `${queue.length} deal${queue.length === 1 ? "" : "s"} waiting for seller review.`,
+      negotiations: queue,
+      data: queue,
+      possibleNextActions: queue.length ? ["seller_approve"] : [],
     });
   } catch (error) {
     return apiErrorResponse(error);

@@ -250,7 +250,7 @@ export async function getNegotiationsForSession(db: Database, buyerSessionId: st
     .orderBy(desc(negotiations.updatedAt));
 
   if (rows.length === 0) return [];
-  const [proposalRows, eventRows] = await Promise.all([
+  const [proposalRows, eventRows, buyerBudgetCents] = await Promise.all([
     db
       .select()
       .from(proposals)
@@ -261,6 +261,7 @@ export async function getNegotiationsForSession(db: Database, buyerSessionId: st
       .from(events)
       .where(inArray(events.negotiationId, rows.map((row) => row.id)))
       .orderBy(events.createdAt),
+    getBudgetCents(db, buyerSessionId),
   ]);
   const byNegotiation = new Map<string, ProposalRecord[]>();
   for (const proposal of proposalRows) {
@@ -365,6 +366,7 @@ export async function getNegotiationsForSession(db: Database, buyerSessionId: st
             mustInclude: mandateRecord.mustInclude,
           }
         : null,
+      buyerBudgetCents,
       possibleActions,
     };
   });

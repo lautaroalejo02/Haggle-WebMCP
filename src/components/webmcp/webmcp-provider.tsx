@@ -53,6 +53,7 @@ type WebMcpContextResponse = {
     counter_offer: ContextAction;
     accept_deal: ContextAction;
     reject_deal: ContextAction;
+    wait_for_seller_response: ContextAction;
   };
 };
 
@@ -138,6 +139,7 @@ function unavailableContext(): WebMcpContextResponse {
       counter_offer: disabled("No seller counter is waiting."),
       accept_deal: disabled("No seller terms are waiting for acceptance."),
       reject_deal: disabled("No active negotiation is available."),
+      wait_for_seller_response: disabled("No seller response is pending."),
     },
   };
 }
@@ -448,6 +450,40 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
 
       const makeOffer = context.actions.make_offer;
       const mandateAction = context.actions.mandate;
+      const waitForSeller = context.actions.wait_for_seller_response;
+      if (waitForSeller?.enabled && waitForSeller.negotiationIds?.length === 1) {
+        const negotiationId = waitForSeller.negotiationIds[0];
+        desired.set("wait_for_seller_response", {
+          kind: "contextual",
+          reason: waitForSeller.reason,
+          tool: {
+            name: "wait_for_seller_response",
+            description:
+              "Wait read-only for the seller agent to respond to the buyer's latest proposal, then return the same current-state payload as get_negotiation_status. Returns pending true if the wait expires.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                timeoutSeconds: {
+                  type: "integer",
+                  minimum: 1,
+                  maximum: 45,
+                  default: 25,
+                  description: "How long to wait. Defaults to 25 seconds; maximum 45.",
+                },
+              },
+              additionalProperties: false,
+            },
+            annotations: { readOnlyHint: true, untrustedContentHint: true },
+            execute: async (input) => {
+              const timeout = typeof input.timeoutSeconds === "number" ? input.timeoutSeconds : 25;
+              return executeApi(
+                "wait_for_seller_response",
+                `/api/negotiations/${encodeURIComponent(negotiationId)}/wait-for-seller?timeoutSeconds=${encodeURIComponent(String(timeout))}`,
+              );
+            },
+          },
+        });
+      }
       if (MANDATE_FEATURE_ENABLED && mandateAction?.enabled) {
         const listingIds = [...(mandateAction.listingIds ?? [])].sort();
         desired.set("get_mandate", {

@@ -26,6 +26,9 @@ export async function GET(request: NextRequest) {
     const canCounter = active.filter((item) => item.possibleActions.includes("counter_offer"));
     const canAccept = active.filter((item) => item.possibleActions.includes("accept_deal"));
     const canReject = active.filter((item) => item.possibleActions.includes("reject_deal"));
+    const waitingForSeller = active.filter(
+      (item) => item.status === "seller_turn" && (!listingId || item.listingId === listingId),
+    );
 
     let makeOffer: MakeOfferContext = disabled(
       "Open or inspect an active listing that has no negotiation in this session.",
@@ -78,6 +81,13 @@ export async function GET(request: NextRequest) {
               negotiationIds: canReject.map((item) => item.id),
             }
           : disabled("No active negotiation can be rejected."),
+        wait_for_seller_response: listingId && waitingForSeller.length
+          ? {
+              enabled: true,
+              reason: "The seller agent is preparing a response for this negotiation.",
+              negotiationIds: waitingForSeller.map((item) => item.id),
+            }
+          : disabled("No seller response is pending on this negotiation surface."),
       },
     });
   } catch (error) {

@@ -52,6 +52,8 @@ type WebMcpContextResponse = {
 
 export type AgentLensTool = {
   name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
   kind: "base" | "contextual";
   state: "pending" | "registered" | "failed";
   reason: string;
@@ -375,6 +377,8 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
         setTools(
           [...desired.entries()].map(([name, entry]) => ({
             name,
+            description: entry.tool.description,
+            inputSchema: entry.tool.inputSchema,
             kind: entry.kind,
             reason: entry.reason,
             state: active.has(name) ? "registered" : "failed",
@@ -487,6 +491,8 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
       setTools(
         [...desired.entries()].map(([name, entry]) => ({
           name,
+          description: entry.tool.description,
+          inputSchema: entry.tool.inputSchema,
           kind: entry.kind,
           reason: entry.reason,
           state: activeRef.current.has(name) ? "registered" : "pending",
@@ -498,7 +504,6 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
   );
 
   const refreshContext = useCallback(async () => {
-    if (!modelContextRef.current) return;
     const sequence = ++requestSequenceRef.current;
     const listingId = routeListingId ?? inspectedListingRef.current;
     try {
@@ -528,6 +533,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
     modelContextRef.current = mc;
     if (!mc) {
       setSupport("unavailable");
+      void refreshContext();
       return () => {
         mountedRef.current = false;
       };

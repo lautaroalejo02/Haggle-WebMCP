@@ -1,6 +1,7 @@
 "use client";
 
 import { Bot, Check, CircleAlert, Clock3, Radio, X } from "lucide-react";
+import Link from "next/link";
 import { useWebMcp } from "./webmcp-provider";
 
 export function AgentLens() {
@@ -81,10 +82,24 @@ export function AgentLens() {
             </div>
           </div>
 
+          {!pageRegistrationAvailable && support !== "checking" ? (
+            <div className="mt-5 border border-mustard/45 bg-mustard-soft px-3 py-3 text-sm leading-6">
+              <p className="font-extrabold">Preview catalog</p>
+              <p className="mt-1 text-ink-muted">
+                WebMCP isn&apos;t available in this browser. These tools activate in ChatGPT&apos;s browser or Chrome with WebMCP enabled.{" "}
+                <Link href="/how-to-try" className="font-extrabold text-ink underline decoration-1 underline-offset-2" onClick={() => setLensOpen(false)}>
+                  How to try
+                </Link>
+              </p>
+            </div>
+          ) : null}
+
           <LensSection title="Available now" icon={<Radio size={15} />}>
-            {!pageRegistrationAvailable ? (
-              <p className="border-l-2 border-danger/50 pl-3 text-sm leading-6 text-ink-muted">
-                No contextual WebMCP tools are registered in this browser session.
+            {!pageRegistrationAvailable && contextual.length ? (
+              contextual.map((tool) => <PreviewToolRow key={tool.name} tool={tool} />)
+            ) : !pageRegistrationAvailable ? (
+              <p className="border-l-2 border-ink/20 pl-3 text-sm leading-6 text-ink-muted">
+                No contextual action is valid on this surface yet.
               </p>
             ) : contextual.length ? (
               contextual.map((tool) => <ToolRow key={tool.name} tool={tool} />)
@@ -101,9 +116,11 @@ export function AgentLens() {
           >
             {pageRegistrationAvailable && base.length ? (
               base.map((tool) => <ToolRow key={tool.name} tool={tool} />)
+            ) : base.length ? (
+              base.map((tool) => <PreviewToolRow key={tool.name} tool={tool} />)
             ) : (
-              <p className="border-l-2 border-danger/50 pl-3 text-sm leading-6 text-ink-muted">
-                Tool names are intentionally hidden because this browser did not expose a WebMCP registration API.
+              <p className="border-l-2 border-ink/20 pl-3 text-sm leading-6 text-ink-muted">
+                Loading the preview catalog for this surface.
               </p>
             )}
           </LensSection>
@@ -167,6 +184,28 @@ function ToolRow({ tool }: { tool: ReturnType<typeof useWebMcp>["tools"][number]
       </div>
       <p className="mt-1.5 text-xs leading-5 text-ink-muted">{tool.reason}</p>
       {tool.error ? <p className="mt-1 text-xs text-danger">{tool.error}</p> : null}
+    </div>
+  );
+}
+
+function PreviewToolRow({ tool }: { tool: ReturnType<typeof useWebMcp>["tools"][number] }) {
+  return (
+    <div className="tool-row border-mustard bg-mustard-soft/55">
+      <div className="flex items-center justify-between gap-3">
+        <code className="text-xs font-extrabold text-deep-blue">{tool.name}</code>
+        <span className="border border-mustard/60 px-1.5 py-0.5 text-[0.58rem] font-black uppercase tracking-[0.1em] text-ink-muted">
+          Preview
+        </span>
+      </div>
+      <p className="mt-1.5 text-xs leading-5 text-ink-muted">{tool.description}</p>
+      <details className="mt-2 border-t border-ink/10 pt-2">
+        <summary className="cursor-pointer text-[0.65rem] font-extrabold uppercase tracking-[0.08em] text-ink-muted">
+          Input schema
+        </summary>
+        <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words bg-ink px-3 py-2 text-[0.65rem] leading-5 text-paper">
+          {JSON.stringify(tool.inputSchema, null, 2)}
+        </pre>
+      </details>
     </div>
   );
 }

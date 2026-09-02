@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ExternalLink, X } from "lucide-react";
+import Link from "next/link";
+import { X } from "lucide-react";
 import { useWebMcp } from "./webmcp-provider";
 
 export function WebMcpBanner() {
@@ -18,18 +19,15 @@ export function WebMcpBanner() {
     <div className="border-b border-mustard/40 bg-mustard-soft px-5 py-2.5 text-sm text-ink">
       <div className="mx-auto flex max-w-[82.5rem] items-center justify-between gap-5">
         <p>
-          <strong>WebMCP is off in this browser session.</strong> No page tool is registered or callable.
-          Human mode still works. Open Chrome with the WebMCP testing flag or use a supported browser agent.
+          <strong>WebMCP isn&apos;t available in this browser.</strong> These tools activate in ChatGPT&apos;s browser or Chrome with WebMCP enabled.
         </p>
         <div className="flex shrink-0 items-center gap-2">
-          <a
-            href="https://developer.chrome.com/docs/ai/webmcp"
-            target="_blank"
-            rel="noreferrer"
-            className="hidden items-center gap-1 text-xs font-extrabold uppercase tracking-[0.08em] sm:flex"
+          <Link
+            href="/how-to-try"
+            className="flex items-center gap-1 text-xs font-extrabold uppercase tracking-[0.08em]"
           >
-            Learn how <ExternalLink size={13} />
-          </a>
+            How to try
+          </Link>
           <button
             type="button"
             className="icon-button"

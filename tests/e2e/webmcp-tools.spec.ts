@@ -128,7 +128,7 @@ test("supports Chrome's AbortSignal tool lifecycle", async ({ page }) => {
   await expect.poll(() => registeredToolNames(page)).toContain("search_listings");
 });
 
-test("labels sample activity and reports WebMCP support precisely", async ({ page }) => {
+test("previews the real tool catalog when WebMCP is unavailable", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
 
@@ -143,7 +143,25 @@ test("labels sample activity and reports WebMCP support precisely", async ({ pag
   await expect(page.getByText("Browser WebMCP API unavailable", { exact: true })).toBeVisible();
   await expect(page.getByText(/The page cannot register tools in this browser/)).toBeVisible();
   await expect(page.getByText("Configured catalog · inactive", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Tool names are intentionally hidden/)).toBeVisible();
+  await expect(page.getByText("Preview catalog", { exact: true })).toBeVisible();
+  await expect(page.getByText("search_listings", { exact: true })).toBeVisible();
+  await page.getByText("Input schema", { exact: true }).first().click();
+  await expect(page.locator("pre").first()).toContainText('"maxPriceUsd"');
+  await expect(page.getByRole("link", { name: "How to try" }).first()).toHaveAttribute("href", "/how-to-try");
+
+  await page.getByRole("button", { name: "Close Agent Lens" }).last().click();
+  await page.goto(`/listings/${LISTING_ID}`);
+  await page.getByRole("button", { name: "Open Agent Lens" }).click();
+  await expect(page.getByLabel("Agent Lens", { exact: true }).getByText("make_offer", { exact: true })).toBeVisible();
+});
+
+test("offers a short judge walkthrough", async ({ page }) => {
+  await page.goto("/how-to-try");
+  await expect(page.getByRole("heading", { name: "Try Haggle with your agent." })).toBeVisible();
+  await expect(page.getByText("Open Haggle with an agent", { exact: true })).toBeVisible();
+  await expect(page.getByText("Copy the prompt", { exact: true })).toBeVisible();
+  await expect(page.getByText("Watch the tools change", { exact: true })).toBeVisible();
+  await expect(page.getByText("Keep the final say", { exact: true })).toBeVisible();
 });
 
 async function registeredToolNames(page: import("@playwright/test").Page) {

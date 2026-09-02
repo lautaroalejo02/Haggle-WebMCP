@@ -189,7 +189,7 @@ test("previews the real tool catalog when WebMCP is unavailable", async ({ page 
   ).toBe(true);
   await page.getByRole("button", { name: "Open Agent Lens" }).click();
   await expect(page.getByText("Browser WebMCP API unavailable", { exact: true })).toBeVisible();
-  await expect(page.getByText(/The page cannot register tools in this browser/)).toBeVisible();
+  await expect(page.getByLabel("Agent Lens", { exact: true }).getByText(/These tools activate in ChatGPT's browser/)).toBeVisible();
   await expect(page.getByText("Configured catalog · inactive", { exact: true })).toBeVisible();
   await expect(page.getByText("Preview catalog", { exact: true })).toBeVisible();
   await expect(page.getByText("search_listings", { exact: true })).toBeVisible();

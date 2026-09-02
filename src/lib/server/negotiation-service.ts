@@ -351,7 +351,9 @@ export async function rejectNegotiation(
 export async function approveNegotiation(
   db: Database,
   negotiationId: string,
-  approver: { kind: "buyer"; buyerSessionId: string } | { kind: "seller"; sellerPersonaId: string },
+  approver:
+    | { kind: "buyer"; buyerSessionId: string }
+    | { kind: "seller"; sellerPersonaId: string; buyerSessionId: string },
 ) {
   const [record] = await db
     .select({
@@ -374,6 +376,9 @@ export async function approveNegotiation(
   }
   if (approver.kind === "seller" && record.sellerPersonaId !== approver.sellerPersonaId) {
     throw new ApiError(403, "SELLER_MISMATCH", "This negotiation belongs to a different seller persona.");
+  }
+  if (approver.kind === "seller" && record.buyerSessionId !== approver.buyerSessionId) {
+    throw new ApiError(404, "NEGOTIATION_NOT_FOUND", "Negotiation not found for this browser session.");
   }
   if (record.status === "closed_deal") return { status: "closed_deal", alreadyApproved: true };
   if (record.status !== "agreed_pending_approval") {

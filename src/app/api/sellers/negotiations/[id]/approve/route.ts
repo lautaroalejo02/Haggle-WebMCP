@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDatabase } from "@/db/client";
 import { apiErrorResponse, readJson } from "@/lib/server/api";
 import { approveNegotiation } from "@/lib/server/negotiation-service";
+import { ensureBuyerSession, requireBuyerSessionId } from "@/lib/server/session";
 
 const bodySchema = z.object({ sellerPersonaId: z.uuid() }).strict();
 
@@ -10,9 +11,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   try {
     const negotiationId = z.uuid().parse((await context.params).id);
     const body = bodySchema.parse(await readJson(request));
-    const result = await approveNegotiation(getDatabase(), negotiationId, {
+    const buyerSessionId = requireBuyerSessionId(request);
+    const db = getDatabase();
+    await ensureBuyerSession(db, buyerSessionId);
+    const result = await approveNegotiation(db, negotiationId, {
       kind: "seller",
       sellerPersonaId: body.sellerPersonaId,
+      buyerSessionId,
     });
     return NextResponse.json({
       ok: true,

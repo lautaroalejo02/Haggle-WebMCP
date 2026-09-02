@@ -4,11 +4,14 @@ import { z } from "zod";
 import { getDatabase } from "@/db/client";
 import { listings, negotiations, proposals } from "@/db/schema";
 import { apiErrorResponse } from "@/lib/server/api";
+import { ensureBuyerSession, requireBuyerSessionId } from "@/lib/server/session";
 
 export async function GET(request: NextRequest) {
   try {
     const sellerPersonaId = z.uuid().parse(request.nextUrl.searchParams.get("sellerPersonaId"));
+    const buyerSessionId = requireBuyerSessionId(request);
     const db = getDatabase();
+    await ensureBuyerSession(db, buyerSessionId);
     const rows = await db
       .select({
         id: negotiations.id,
@@ -32,7 +35,13 @@ export async function GET(request: NextRequest) {
       .from(negotiations)
       .innerJoin(listings, eq(negotiations.listingId, listings.id))
       .leftJoin(proposals, eq(negotiations.agreementProposalId, proposals.id))
-      .where(and(eq(listings.sellerPersonaId, sellerPersonaId), eq(negotiations.status, "agreed_pending_approval")))
+      .where(
+        and(
+          eq(listings.sellerPersonaId, sellerPersonaId),
+          eq(negotiations.buyerSessionId, buyerSessionId),
+          eq(negotiations.status, "agreed_pending_approval"),
+        ),
+      )
       .orderBy(desc(negotiations.updatedAt));
     return NextResponse.json({
       ok: true,

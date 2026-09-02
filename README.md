@@ -6,12 +6,24 @@
 
 Haggle treats local commerce as more than a checkout button: price, pickup or delivery, public meeting place, time window, and included accessories are all first-class negotiable terms.
 
+**Bikes today. Any local deal tomorrow.**
+
+## Try it in under two minutes
+
+1. Open the [live demo](https://haggle-web-mcp.vercel.app) in ChatGPT's browser, or in Chrome with `chrome://flags/#enable-webmcp-testing` enabled.
+2. Open [How to try](https://haggle-web-mcp.vercel.app/how-to-try) and copy the prepared prompt.
+3. Watch Agent Lens change as the agent inspects a listing, makes an offer, and receives the seller's response.
+4. Review every term in the human approval takeover, then approve or decline and keep negotiating.
+
+Optional: open Seller Studio to review and approve the same deal from the seller's side.
+
 ## Why WebMCP matters here
 
 A normal marketplace page can be read by an agent. Haggle makes the marketplace *operable* by an agent through a small, state-aware tool surface:
 
-- Base tools are always available: `search_listings`, `get_listing`, `prepare_negotiation`, `get_my_negotiations`, and `set_budget`.
+- Base tools are always available: `search_listings`, `get_listing`, `prepare_negotiation`, `get_my_negotiations`, `get_negotiation_status`, and `set_budget`.
 - Contextual tools are registered only when valid: `make_offer`, `counter_offer`, `accept_deal`, and `reject_deal`.
+- When the mandate feature is enabled, `get_mandate` and `set_mandate` expose private buyer boundaries that Haggle enforces on the server.
 - The surface changes as a negotiation advances. After a seller counters, for example, `make_offer` disappears and the valid response tools appear.
 - Tool availability is guidance, not authorization. Every mutation is revalidated by the server.
 - Human approval is intentionally not exposed as a WebMCP tool.
@@ -22,13 +34,13 @@ All experimental WebMCP usage is isolated in [`src/components/webmcp/webmcp-prov
 
 The seeded golden path is deterministic enough for a reliable live demo while still using the full state machine:
 
-1. Set a total budget of **$190**.
+1. Enable the mandate feature and set a **$180** maximum, Saturday 2–4 PM, public places only, with the U-lock required.
 2. Open **Moss Green Trek FX 2**, asking **$220**.
 3. Run `prepare_negotiation`, then offer **$165** for Saturday pickup.
-4. Haggler Hank counters at **$185**, at Riverside Library, with the U-lock included.
-5. The buyer agent accepts the terms.
-6. The buyer and seller humans approve separately.
-7. Haggle closes the deal and records the complete audit trail.
+4. Haggler Hank counters at **$185**, at Riverside Library, with the U-lock included; an attempted acceptance is blocked by the mandate.
+5. The buyer agent counters at **$180** and reaches provisional terms.
+6. The human declines with a private reason; the buyer agent reads it and renegotiates.
+7. The buyer and seller humans approve separately. Haggle closes the deal and records the complete audit trail.
 
 Try this prompt in a WebMCP-capable browser:
 
@@ -97,9 +109,10 @@ DATABASE_URL=postgresql://...
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.6-luna
 DEMO_MODE=true
+NEXT_PUBLIC_FEATURE_MANDATE=false
 ```
 
-`OPENAI_API_KEY` is optional for the deterministic fallback path. `DATABASE_URL` is required for persisted API routes. `DEMO_MODE=true` keeps seeded listings available for new browser sessions after a complete deal, while the session that closed the deal still sees its final state.
+`OPENAI_API_KEY` is optional for the deterministic fallback path. `DATABASE_URL` is required for persisted API routes. `DEMO_MODE=true` keeps seeded listings available for new browser sessions after a complete deal, while the session that closed the deal still sees its final state. `NEXT_PUBLIC_FEATURE_MANDATE=true` enables the buyer mandate tools, UI, and server enforcement; it defaults to off and requires a rebuild or redeploy because it is a public build-time flag.
 
 Open `http://localhost:3000`. For the agent experience, use ChatGPT's in-app browser or Chrome with `chrome://flags/#enable-webmcp-testing` enabled. Without WebMCP, the complete human interface remains available.
 

@@ -91,6 +91,10 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      <section className="mx-auto max-w-[82.5rem] border-t border-ink/20 px-5 pt-10 text-center sm:px-8">
+        <p className="font-display text-3xl tracking-[-0.035em]">Bikes today. Any local deal tomorrow.</p>
+      </section>
     </main>
   );
 }

@@ -19,6 +19,10 @@ type WebMcpTool = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  annotations?: {
+    readOnlyHint: boolean;
+    untrustedContentHint: boolean;
+  };
   execute: (input: Record<string, unknown>) => Promise<WebMcpToolResult>;
 };
 type WebModelContext = {
@@ -120,6 +124,7 @@ function toolSignature(tool: WebMcpTool): string {
     name: tool.name,
     description: tool.description,
     inputSchema: tool.inputSchema,
+    annotations: tool.annotations,
   });
 }
 
@@ -230,6 +235,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
           },
           additionalProperties: false,
         },
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: async (input) => {
           const params = new URLSearchParams();
           if (typeof input.query === "string") params.set("query", input.query);
@@ -252,6 +258,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
           required: ["listingId"],
           additionalProperties: false,
         },
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: async (input) =>
           executeApi(
             "get_listing",
@@ -274,6 +281,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
           required: ["listingId"],
           additionalProperties: false,
         },
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: async (input) =>
           executeApi(
             "prepare_negotiation",
@@ -289,6 +297,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
         description:
           "Get this browser session's negotiations, current structured terms, whose turn it is, and currently possible actions. Use it after a seller has had several seconds to respond or whenever deal state may have changed. Results never include another buyer's activity.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: async () => executeApi("get_my_negotiations", "/api/negotiations?agent=1"),
       },
       {
@@ -307,6 +316,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
           required: ["negotiationId"],
           additionalProperties: false,
         },
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: async (input) =>
           executeApi(
             "get_negotiation_status",
@@ -325,6 +335,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
           required: ["maxTotalUsd"],
           additionalProperties: false,
         },
+        annotations: { readOnlyHint: false, untrustedContentHint: false },
         execute: async (input) =>
           executeApi("set_budget", "/api/budget", {
             method: "POST",
@@ -375,6 +386,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
             name: entry.tool.name,
             description: entry.tool.description,
             inputSchema: entry.tool.inputSchema,
+            annotations: entry.tool.annotations,
             execute: async (input: Record<string, unknown>) => {
               return entry.tool.execute(input);
             },
@@ -453,6 +465,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
               required: ["listingId"],
               additionalProperties: false,
             },
+            annotations: { readOnlyHint: true, untrustedContentHint: false },
             execute: async (input) =>
               executeApi(
                 "get_mandate",
@@ -468,6 +481,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
             description:
               "Set the buyer's private, server-enforced mandate for this listing. This is idempotent. Future offers, counters, and acceptances outside these boundaries are rejected by Haggle, never silently changed.",
             inputSchema: mandateSchema(listingIds),
+            annotations: { readOnlyHint: false, untrustedContentHint: false },
             execute: async (input) =>
               executeApi(
                 "set_mandate",
@@ -487,6 +501,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
             description:
               `Propose initial price and fulfillment terms for an inspected bicycle. Pickup requires a public meetingPlaceId returned by get_listing; delivery uses only a public zone, never a private address. The seller responds asynchronously and the human buyer still controls final approval.${MANDATE_FEATURE_ENABLED ? " Proposals outside the buyer's mandate are rejected by Haggle." : ""}`,
             inputSchema: dealSchema("listingId", listingIds),
+            annotations: { readOnlyHint: false, untrustedContentHint: true },
             execute: async (input) =>
               executeApi("make_offer", "/api/negotiations", {
                 method: "POST",
@@ -549,6 +564,7 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
             name: config.name,
             description: config.description,
             inputSchema,
+            annotations: { readOnlyHint: false, untrustedContentHint: true },
             execute: async (input) =>
               executeApi(
                 config.name,

@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 const LISTING_ID = "10000000-0000-4000-8000-000000000001";
 
 type RegisteredTool = {
+  annotations?: { readOnlyHint: boolean; untrustedContentHint: boolean };
   execute: (input: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text: string }> }>;
 };
 
@@ -33,6 +34,20 @@ test("registers a minimal dynamic WebMCP surface and returns guarded output", as
   await expect(page.getByText("Page tools registered · agent unverified", { exact: true })).toBeVisible();
   await expect(page.getByText(/Registration does not prove agent access/)).toBeVisible();
   await page.getByRole("button", { name: "Close Agent Lens" }).last().click();
+
+  const annotationSnapshot = await page.evaluate(() => {
+    const tools = (window as unknown as { __haggleTestTools: Map<string, RegisteredTool> }).__haggleTestTools;
+    return {
+      search: tools.get("search_listings")?.annotations,
+      budget: tools.get("set_budget")?.annotations,
+      offer: tools.get("make_offer")?.annotations,
+    };
+  });
+  expect(annotationSnapshot).toEqual({
+    search: { readOnlyHint: true, untrustedContentHint: true },
+    budget: { readOnlyHint: false, untrustedContentHint: false },
+    offer: { readOnlyHint: false, untrustedContentHint: true },
+  });
 
   const searchResult = await executeTool(page, "search_listings", { query: "bike" });
   expect(searchResult.securityNotice).toContain("untrusted user data");

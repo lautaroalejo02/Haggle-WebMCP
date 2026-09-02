@@ -1,6 +1,6 @@
 # Haggle — tonight's delivery
 
-All five requested tasks shipped in order. The mandatory gate—TypeScript, ESLint, 52 unit tests, and the Next.js production build—was green before every task commit.
+All five requested tasks shipped in order. The mandatory gate—TypeScript, ESLint, the full then-current unit suite (ending at 52 tests), and the Next.js production build—was green before every task commit.
 
 ## Task status
 
